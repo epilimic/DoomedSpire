@@ -51,7 +51,7 @@ internal static class DoomPopup
 			}
 			else
 			{
-				view.Stop();
+				view.Suspend(); // the game stays where it is; opening again carries on
 			}
 		}
 
@@ -63,6 +63,9 @@ internal static class DoomPopup
 		map.Closed += () => ModLog.Try("map", "closing the popup with the map", () => SetOpen(false));
 
 		map.AddChildSafely(button);
+		// The run is over when the map screen leaves the tree: only then is a paused game thrown away.
+		map.TreeExited += () => ModLog.Try("map", "ending DOOM with the run", view.Shutdown);
+
 		map.AddChildSafely(layer);
 		ModLog.Info("map", "DOOM button added to the map screen");
 	}

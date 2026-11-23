@@ -40,7 +40,10 @@ namespace ManagedDoomTest
 
             var classes = Assembly.GetExecutingAssembly().GetTypes()
                 .Where(t => t.GetCustomAttribute<TestClassAttribute>() != null)
-                .OrderBy(t => t.FullName);
+                // Upstream's tests first, ours after. Starting a game from Freedoom (our own tests do) applies the WAD's DEHACKED lump to the engine's
+                // static tables, which stay changed for the rest of the process; upstream's hash tests assume the unchanged tables.
+                .OrderBy(t => t.Namespace == "ManagedDoomTest" ? 1 : 0)
+                .ThenBy(t => t.FullName);
             foreach (var type in classes)
             {
                 var instance = Activator.CreateInstance(type);

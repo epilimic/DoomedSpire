@@ -1,0 +1,3 @@
+# Vendored MeltySynth (see SOURCE.md): silences its two nullable warnings under the mod's settings. The .cs files stay byte-for-byte upstream.
+[*.cs]
+dotnet_diagnostic.CS8600.severity = none

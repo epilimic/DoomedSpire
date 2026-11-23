@@ -8,8 +8,9 @@ using ManagedDoom;
 namespace DoomedSpire;
 
 /// <summary>
-/// The picture area inside the popup, and the running game behind it. Start() builds a game and begins playing it; Stop() throws it away.
-/// The Godot side only: the engine work (the game itself, keyboard and mouse) is in src/Host, which the tests run without the game.
+/// The picture area inside the popup, and the game behind it. Start() starts a game or carries on the paused one; Suspend() pauses it in place when the
+/// popup closes (the game stays in memory); Shutdown() throws it away when the run ends.
+/// The Godot side only: the engine work (the game itself, keyboard, mouse, sound and music) is in src/Host, which the tests run without the game.
 ///
 /// No custom Godot classes (a dll-only mod cannot register scripts), so everything is wired with signals:
 ///  - every frame comes from SceneTree.ProcessFrame, connected only while the game is running;
@@ -48,6 +49,9 @@ internal sealed class DoomView
 	private Input.MouseModeEnum mouseModeBefore;
 	private bool mouseCaptured;
 	private bool escapeWasDown;
+	private bool active;
+	private bool endGame;
+	private AudioOutput? audioOutput;
 	private int failures;
 
 	/// <summary>Called when DOOM itself wants to end (the player quit from DOOM's menu). The popup sets this to close itself.</summary>
@@ -90,53 +94,111 @@ internal sealed class DoomView
 		mouseArea.GuiInput += OnGuiInput;
 	}
 
-	/// <summary>Called when the popup opens: gets the game data ready (the embedded Freedoom, written to disk the first time), starts a fresh game and begins playing it.</summary>
+	/// <summary>
+	/// Called when the popup opens. The first time (in a run, or after the player quit from DOOM's menu) this starts a new game from the embedded Freedoom
+	/// data; after that it carries on the paused game exactly where it was left.
+	/// </summary>
 	public void Start()
 	{
-		if (session != null)
-		{
-			return;
-		}
-
 		try
 		{
 			var timer = Stopwatch.StartNew();
-			var wad = FreedoomData.EnsureOnDisk();
-			var dataReady = timer.ElapsedMilliseconds;
-			session = DoomSession.Create(wad);
-			rgba = new byte[session.Width * session.Height * 4];
-			image = Image.CreateFromData(session.Width, session.Height, false, Image.Format.Rgba8, rgba);
-			texture = ImageTexture.CreateFromImage(image);
-			picture.Texture = texture;
+			var resuming = session != null;
+			if (session == null)
+			{
+				var wad = FreedoomData.EnsureOnDisk();
+				var dataReady = timer.ElapsedMilliseconds;
+				session = DoomSession.Create(wad, new AudioOptions { OpenSoundFont = SoundFontData.Open, Report = ReportAudioProblem });
+				rgba = new byte[session.Width * session.Height * 4];
+				image = Image.CreateFromData(session.Width, session.Height, false, Image.Format.Rgba8, rgba);
+				texture = ImageTexture.CreateFromImage(image);
+				picture.Texture = texture;
+				ModLog.Info("game", $"new game from {Path.GetFileName(wad)} ({session.Width}x{session.Height}) in {timer.ElapsedMilliseconds} ms " +
+					$"(game data ready after {dataReady} ms; {session.LoadedSoundCount} sounds, music {(session.HasMusic ? "on" : "off")})");
+			}
 			message.Visible = false;
-
-			failures = 0;
-			accumulator = 0;
-			windowWasUnfocused = false;
-			escapeWasDown = false;
-			lastTimestamp = Stopwatch.GetTimestamp();
-			tree = screen.GetTree();
-			frameHandler = OnFrame;
-			tree.ProcessFrame += frameHandler;
-			inputWindow = tree.Root;
-			inputWindow.WindowInput += OnWindowInput;
-			CaptureMouse();
-			screen.GrabFocus();
-			KeyLock.Active = true;
-			closeButton.Visible = false;
-			ModLog.Info("game", $"started from {Path.GetFileName(wad)} ({session.Width}x{session.Height}) in {timer.ElapsedMilliseconds} ms (game data ready after {dataReady} ms)");
+			Activate(session);
+			if (resuming)
+			{
+				ModLog.Info("game", "carrying on the paused game");
+			}
 		}
 		catch (Exception e)
 		{
 			ModLog.Fail("game", "starting DOOM", e);
-			Stop();
+			Shutdown();
 			Say($"Could not start DOOM.\n\n{e.GetType().Name}: {ModLog.Clean(e.Message)}");
 		}
 	}
 
-	/// <summary>Called when the popup closes (or the map does): stops the frames, lets go of every key and the keyboard focus, and throws the game away.</summary>
-	public void Stop()
+	/// <summary>
+	/// Called when the popup closes (Esc, the map closing, or DOOM's own quit). Everything is switched off at once: the frames, the audio, the mouse capture,
+	/// the key lock. The game itself stays in memory, paused exactly where it is, so opening the popup again carries on. Only if the player quit from
+	/// DOOM's menu is the game thrown away.
+	/// </summary>
+	public void Suspend()
 	{
+		Deactivate();
+		if (endGame)
+		{
+			endGame = false;
+			DisposeGame();
+		}
+	}
+
+	/// <summary>The end of everything: the run is over (the map screen is gone), or something failed. Switches off and throws the game away.</summary>
+	public void Shutdown()
+	{
+		Deactivate();
+		DisposeGame();
+	}
+
+	/// <summary>Connects the frame loop, the mouse, the keys and the audio to a game, and starts the clock from now (so time spent closed is not caught up).</summary>
+	private void Activate(DoomSession game)
+	{
+		active = true;
+		failures = 0;
+		accumulator = 0;
+		windowWasUnfocused = false;
+		escapeWasDown = false;
+		lastTimestamp = Stopwatch.GetTimestamp();
+
+		var (soundGain, musicGain) = GameVolume.Read();
+		game.SetAudioGains(soundGain, musicGain);
+
+		tree = screen.GetTree();
+		frameHandler = OnFrame;
+		tree.ProcessFrame += frameHandler;
+		inputWindow = tree.Root;
+		inputWindow.WindowInput += OnWindowInput;
+		CaptureMouse();
+		screen.GrabFocus();
+		KeyLock.Active = true;
+		closeButton.Visible = false;
+
+		try
+		{
+			audioOutput = new AudioOutput(screen);
+			audioOutput.Start();
+		}
+		catch (Exception e)
+		{
+			// No sound is better than no game: carry on silently.
+			ModLog.Fail("audio", "starting the audio output", e);
+			audioOutput?.Stop();
+			audioOutput = null;
+		}
+	}
+
+	/// <summary>Everything Activate did, undone. Safe to call when not active and any number of times. Does not touch the game itself.</summary>
+	private void Deactivate()
+	{
+		if (!active)
+		{
+			return;
+		}
+		active = false;
+
 		try
 		{
 			if (tree != null && frameHandler != null && GodotObject.IsInstanceValid(tree))
@@ -153,30 +215,51 @@ internal sealed class DoomView
 			inputWindow = null;
 
 			session?.ReleaseAllInput();
-			session?.Dispose();
+			audioOutput?.Stop();
 		}
 		catch (Exception e)
 		{
-			ModLog.Fail("game", "stopping DOOM", e);
+			ModLog.Fail("game", "pausing DOOM", e);
 		}
 		finally
 		{
+			audioOutput = null;
 			ReleaseMouse();
 			KeyLock.Active = false;
 			if (GodotObject.IsInstanceValid(closeButton))
 			{
 				closeButton.Visible = true;
 			}
-			session = null;
-			rgba = null;
-			image = null;
-			texture = null;
-			picture.Texture = null;
 			if (GodotObject.IsInstanceValid(screen) && screen.HasFocus())
 			{
 				screen.ReleaseFocus();
 			}
 		}
+	}
+
+	private void DisposeGame()
+	{
+		try
+		{
+			session?.Dispose();
+		}
+		catch (Exception e)
+		{
+			ModLog.Fail("game", "closing the game", e);
+		}
+		session = null;
+		rgba = null;
+		image = null;
+		texture = null;
+		if (GodotObject.IsInstanceValid(picture))
+		{
+			picture.Texture = null;
+		}
+	}
+
+	private static void ReportAudioProblem(string text)
+	{
+		ModLog.OnceInfo("audio", text, text);
 	}
 
 	/// <summary>Every rendered frame while the game runs: run the game clock, then draw.</summary>
@@ -240,6 +323,7 @@ internal sealed class DoomView
 				if (current.Tick() == UpdateResult.Completed)
 				{
 					ModLog.Info("game", "the player quit from DOOM's menu");
+					endGame = true; // unlike Esc, quitting ends the game: the next time starts a new one
 					RequestClose?.Invoke();
 					return;
 				}
@@ -255,6 +339,8 @@ internal sealed class DoomView
 				screen.GrabFocus(); // something else took the keyboard (a click elsewhere): take it back, or the keys would reach the game
 			}
 
+			audioOutput?.Pump(current);
+
 			current.RenderTo(pixels, accumulator / TicSeconds);
 			target.SetData(current.Width, current.Height, false, Image.Format.Rgba8, pixels);
 			tex.Update(target);
@@ -265,7 +351,7 @@ internal sealed class DoomView
 			if (++failures >= MaxFailuresBeforeStopping)
 			{
 				ModLog.Warn("game", $"{failures} frames failed; stopping DOOM so it cannot slow the game down");
-				Stop();
+				Shutdown();
 				Say("DOOM stopped after repeated errors. Close this and open it again to retry; see the log for details.");
 			}
 		}

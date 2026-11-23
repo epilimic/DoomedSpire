@@ -15,13 +15,15 @@ internal sealed class DoomSession : IDisposable
 	private readonly GameContent content;
 	private readonly EngineVideo video;
 	private readonly PlayerInput input;
+	private readonly DoomAudio? audio;
 	private readonly Doom doom;
 
-	private DoomSession(GameContent content, EngineVideo video, PlayerInput input, Doom doom)
+	private DoomSession(GameContent content, EngineVideo video, PlayerInput input, DoomAudio? audio, Doom doom)
 	{
 		this.content = content;
 		this.video = video;
 		this.input = input;
+		this.audio = audio;
 		this.doom = doom;
 	}
 
@@ -39,7 +41,7 @@ internal sealed class DoomSession : IDisposable
 	internal const int MouseSensitivity = 5;
 
 	/// <summary>Starts the game straight into episode 1, map 1 on the WAD at <paramref name="iwadPath"/>. Throws if the file is missing or not a usable WAD.</summary>
-	public static DoomSession Create(string iwadPath)
+	public static DoomSession Create(string iwadPath, AudioOptions? audioOptions = null)
 	{
 		var args = new CommandLineArgs(new[] { "-iwad", iwadPath, "-warp", "1", "1", "-nosound", "-nomusic", "-nomouse" });
 		var config = new Config { mouse_sensitivity = MouseSensitivity };
@@ -49,8 +51,11 @@ internal sealed class DoomSession : IDisposable
 			content = new GameContent(args);
 			var video = new EngineVideo(config, content);
 			var input = new PlayerInput(config);
-			var doom = new Doom(args, config, content, video, NullSound.GetInstance(), NullMusic.GetInstance(), input);
-			return new DoomSession(content, video, input, doom);
+			var audio = audioOptions == null ? null : new DoomAudio(config, content, audioOptions);
+			ISound sound = audio != null ? audio.Sound : NullSound.GetInstance();
+			IMusic music = audio?.Music != null ? audio.Music : NullMusic.GetInstance();
+			var doom = new Doom(args, config, content, video, sound, music, input);
+			return new DoomSession(content, video, input, audio, doom);
 		}
 		catch
 		{
@@ -95,7 +100,31 @@ internal sealed class DoomSession : IDisposable
 		video.CopyRowMajor(rgba);
 	}
 
+	/// <summary>Fills the two buffers with the next <paramref name="frames"/> frames of sound and music (44100 Hz, -1 to 1). Silence if the session has no audio.</summary>
+	public void RenderAudio(float[] left, float[] right, int frames)
+	{
+		if (audio == null)
+		{
+			Array.Clear(left, 0, frames);
+			Array.Clear(right, 0, frames);
+			return;
+		}
+		audio.Render(left, right, frames);
+	}
+
+	/// <summary>How loud the sound effects and the music are overall, 0 to 1 (the mod follows the game's own volume settings).</summary>
+	public void SetAudioGains(float sound, float music)
+	{
+		if (audio != null)
+		{
+			audio.SoundGain = sound;
+			audio.MusicGain = music;
+		}
+	}
+
 	// What the tests look at.
+	internal int LoadedSoundCount => audio?.Sound.LoadedCount ?? 0;
+	internal bool HasMusic => audio?.Music != null;
 	internal bool MenuActive => doom.Menu.Active;
 	internal int Ammo => doom.Game.World.ConsolePlayer.Ammo[(int)AmmoType.Clip];
 	internal (int X, int Y, uint Angle) PlayerState

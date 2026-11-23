@@ -13,9 +13,11 @@ distribution's package (Debian/Ubuntu: `freedoom`; on Arch/CachyOS I believe `fr
 The packages' usual folders (`/usr/share/games/doom`, `/usr/share/doom`) are found without any setting. A test whose WAD is missing is reported as SKIP, never as a pass.
 The project is built for .NET 8 and is set to run on any newer runtime.
 
-**Last result (Freedoom 0.13.0, .NET 8): 113 passed, 0 failed, 0 skipped, 3 seconds.** Checked that it can fail: making the fixed-point multiply off by one makes 40 of the 97 fail.
+**Last result (Freedoom 0.13.0, .NET 8): 129 passed, 0 failed, 0 skipped, 5 seconds.** Checked that it can fail: making the fixed-point multiply off by one makes 40 of the 97 fail.
 
 `FrameTests.cs` is our own (not upstream): it runs the engine glue in `src/Host` on Freedoom: renders a frame, walks, turns, shoots, opens the menu, quits, and turns keyboard and mouse input into the player's commands. It also saves the picture to `tests/Engine.Tests/out/first-frame.png` (git-ignored), so a person can look at it.
+
+**Order matters, on purpose:** the runner runs upstream's tests first and ours after. Starting a game from Freedoom (our own tests do) applies the WAD's `DEHACKED` lump to the engine's static tables, and they stay changed for the rest of the process, which breaks upstream's hash tests (they assume the unchanged tables). The mod itself is not affected: it only ever plays Freedoom. `AudioTests.cs` renders the sound effects and the music to numbers and saves `out/audio-sample.wav` (git-ignored) so a person can listen to it; it needs `assets/soundfont/TimGM6mb.sf2`, which is in the repo.
 
 ## Where the tests come from
 

@@ -37,6 +37,9 @@
     <!-- DOOM's game data (Freedoom, BSD) and its license notice, see assets/freedoom/README.md. Written to disk the first time DOOM opens (src/FreedoomData.cs). -->
     <EmbeddedResource Include="assets/freedoom/freedoom1.wad" LogicalName="freedoom1.wad" />
     <EmbeddedResource Include="assets/freedoom/LICENSE.txt" LogicalName="freedoom-LICENSE.txt" />
+    <!-- DOOM's music is played with this soundfont (GPL-2), see assets/soundfont/README.md. Read straight from the dll by the synthesizer. -->
+    <EmbeddedResource Include="assets/soundfont/TimGM6mb.sf2" LogicalName="TimGM6mb.sf2" />
+    <EmbeddedResource Include="assets/soundfont/LICENSE.txt" LogicalName="TimGM6mb-LICENSE.txt" />
   </ItemGroup>
 
   <Target Name="CheckSts2Paths" BeforeTargets="ResolveAssemblyReferences;CoreCompile">
