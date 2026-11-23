@@ -48,6 +48,13 @@ namespace ManagedDoom
                 }
 
                 gameMode = GetGameMode(names);
+                // DoomedSpire change: the file name "doom" is the Ultimate DOOM (4 episodes) to the engine, but the registered DOOM (3 episodes) has the same name.
+                // Without episode 4 it is the registered game, whose episode menu has three entries; the Ultimate one asks for the picture M_EPI4, which the
+                // registered game does not have, and fails every time the menu is drawn.
+                if (gameMode == GameMode.Retail && GetLumpNumber("E4M1") == -1)
+                {
+                    gameMode = GameMode.Registered;
+                }
                 missionPack = GetMissionPack(names);
                 gameVersion = GetGameVersion(names);
 

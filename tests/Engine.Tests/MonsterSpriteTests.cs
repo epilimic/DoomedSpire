@@ -62,6 +62,24 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void TheRegisteredDoomIsNotTakenForTheUltimateOne()
+        {
+            // the engine goes by the file name; the registered DOOM and the Ultimate DOOM are both doom.wad, and only the Ultimate one has episode 4
+            Func<string, string[], GameMode> modeOf = (fileName, lumps) =>
+            {
+                var folder = Path.Combine(Path.GetTempPath(), "doomedspire-mode-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(folder);
+                var path = Path.Combine(folder, fileName);
+                File.WriteAllBytes(path, PwadWriter.Build(lumps.Select(l => (l, new byte[] { 1 })).ToList()));
+                using (var wad = new Wad(path)) return wad.GameMode;
+            };
+            Assert.AreEqual(GameMode.Registered, modeOf("DOOM.WAD", new[] { "E1M1", "E2M1", "E3M1" }), "no episode 4: the registered game");
+            Assert.AreEqual(GameMode.Retail, modeOf("DOOM.WAD", new[] { "E1M1", "E4M1" }), "episode 4: the Ultimate DOOM");
+            Assert.AreEqual(GameMode.Shareware, modeOf("DOOM1.WAD", new[] { "E1M1" }), "the shareware game is not changed");
+            Assert.AreEqual(GameMode.Retail, modeOf("freedoom1.wad", new[] { "E1M1", "E4M1" }), "nor is Freedoom's first game");
+        }
+
+        [TestMethod]
         public void TheGameHasFourGibAnimationsToDieInto()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))
