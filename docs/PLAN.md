@@ -61,8 +61,10 @@ All from `epilimic/sts2src` (commit `daf0fdb`, game v0.113.1):
 The game's art is read from the player's own installed game at runtime and is **never committed or uploaded** (standard §10: offline/art tools never commit the game's art). That also keeps the public GPL source free of MegaCrit's art.
 
 Open points:
-- **Which STS enemy replaces which DOOM monster** is a design choice for the owner. DOOM's roster is zombieman, shotgun guy, imp, demon, spectre, lost soul, cacodemon, baron, and so on up to the bosses. `sts2.py` can list STS enemies by act and tier to match them by size and role.
+- **Mapping rule (decided): random, one act ("land") per level.** Each level picks one act, and every DOOM monster type in that level is assigned a random enemy **from that act only**, so Hive and Glory enemies never share a level. The act's enemy pool comes from the game itself, not from a list we keep: each act's `GenerateAllEncounters()` (`MegaCrit/Sts2/Core/Models/Acts/{Overgrowth,Underdocks,Hive,Glory}.cs`) names its encounters, and each encounter names its monsters (`index/catalog/encounters.md`). Pool sizes from a read of that data: **Overgrowth 29, Underdocks 22, Hive 26, Glory 23** distinct enemies, against about 20 DOOM monster types, so a level can nearly always give every monster type its own enemy. Not verified: that the encounter-to-monsters link can be read through the game's API at runtime (it may need an instance), and that every enemy in a pool has a usable visual scene.
+- **Defaults I would use unless told otherwise** (each is a one-line change): the act for each level is itself random; the draw is seeded by the run seed plus the level, so the same level looks the same every time you open it in a run; each enemy is scaled to its DOOM monster's size, whatever the enemy's own size is. A possible extra, not planned: matching tiers (elites for the tough DOOM monsters, an act boss for the DOOM bosses).
 - A quantized 256-colour version of STS art will look "retro" and may muddy. If it looks bad, the fallback is extending the renderer to draw RGBA sprites with a light tint. That is more work, so we try the palette route first.
+- Freedoom Phase 1 has four episodes, which happens to match the four acts. I believe that is right but have not checked it, nor that ManagedDoom reads Freedoom's files without changes.
 - Capturing from a viewport means a GPU read-back and the Spine animation names per enemy. Both are unverified until the game is running; step 5 below is where this gets proven.
 - Projectiles (fireballs) and the player weapons are not enemies, so they stay Freedoom's unless the owner asks otherwise.
 
@@ -96,19 +98,20 @@ A cloud session cannot build against the game (no game DLLs, and `dotnet` is not
 ## 9. Decisions made (2026-11-23) and what is still open
 
 Decided by the owner:
-1. Display name **Doomed Spire**.
+1. Display name **Doomed Spire**; mod id **`DoomedSpire`** (published ids never change).
 2. Popup is an **in-game panel**.
 3. A **button** on the map screen for now; a hotkey maybe later.
 4. **Freedoom** is the WAD.
 5. **Sound, music and mouse** now; **controller later**.
 6. **Publish eventually**, everything public when the time comes; **private until then**.
 7. **`main` only**: first commit on `main`, stay on `main`, the `claude/...` branch is to be deleted.
-8. DOOM's enemies are replaced with **STS enemies** (section 5).
+8. DOOM's enemies are replaced with **STS enemies**, **randomly, one act per level** (section 5).
+9. The owner renames the repo to **`DoomedSpire`** (GitHub redirects the old name, but a session's access is scoped by repo name, so the next session re-attaches it by the new name).
 
 Still open:
-- **Mod id.** The standard wants letters, digits and underscores, no spaces, and a published id never changes. `Doomed_Spire` (the owner likes underscores) or `DoomedSpire`?
-- **Enemy mapping:** which STS enemy for which DOOM monster (section 5), or leave it to a first guess to be corrected in play.
-- **Repo name:** `epilimic/doom` already exists. Keep it, as the standard does not fix repo names?
+- Nothing blocks the first step. The defaults in section 5 stand until the owner changes them.
+
+Next step (the owner, per standard §12, on their machine): `bash <modding-standards>/scripts/new-mod.sh dll DoomedSpire "Doomed Spire"`.
 
 ## Sources
 
