@@ -80,6 +80,22 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void ACreatureWithItsOwnNamesForAnimationsStillGetsItsAttackAndHurtPoses()
+        {
+            // the Knowledge Demon's animations, from the game: attack_light, attack_medium and attack_heavy but no plain "attack" (which cost it two poses)
+            var demon = new[] { "idle_loop", "attack_light", "attack_medium", "attack_heavy", "brain_rot", "heal", "burnt_loop", "hurt", "die", "hurt_burnt", "die_burnt" };
+            Assert.AreEqual("attack_medium", MonsterSprites.ChooseAnimation(new[] { "attack", "cast" }, demon), "the medium attack");
+            Assert.AreEqual("hurt", MonsterSprites.ChooseAnimation(new[] { "hurt", "hit" }, demon));
+            Assert.AreEqual("idle_loop", MonsterSprites.ChooseAnimation(new[] { "idle_loop", "idle" }, demon));
+            // an exact name is always preferred, and "cast" counts when there is no attack
+            Assert.AreEqual("attack", MonsterSprites.ChooseAnimation(new[] { "attack", "cast" }, new[] { "attack_heavy", "attack", "cast" }));
+            Assert.AreEqual("cast", MonsterSprites.ChooseAnimation(new[] { "attack", "cast" }, new[] { "idle_loop", "cast", "hurt" }));
+            // with no medium one, the shortest similar name; with nothing similar, nothing
+            Assert.AreEqual("attack_ram", MonsterSprites.ChooseAnimation(new[] { "attack", "cast" }, new[] { "attack_flame", "attack_ram" }));
+            Assert.IsTrue(MonsterSprites.ChooseAnimation(new[] { "attack", "cast" }, new[] { "idle_loop", "hurt", "die" }) == null);
+        }
+
+        [TestMethod]
         public void TheGameHasFourGibAnimationsToDieInto()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))

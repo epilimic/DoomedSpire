@@ -85,13 +85,23 @@ internal static class EnemyCapture
 			}
 			state.SetTimeScale(0f); // the animation only moves when we say so
 
+			var animationNames = skeleton.GetData().GetAnimationNames();
 			var frames = new Dictionary<char, CapturedFrame>();
+			var reported = new HashSet<string>();
 			foreach (var request in requests)
 			{
-				var animation = request.Animations.FirstOrDefault(a => sprite.HasAnimation(a));
+				var animation = MonsterSprites.ChooseAnimation(request.Animations, animationNames);
 				if (animation == null)
 				{
+					if (reported.Add(request.Animations[0]))
+					{
+						ModLog.Info("enemy", $"{name} has no animation like {string.Join(" or ", request.Animations)}; it has: {string.Join(", ", animationNames)}");
+					}
 					continue;
+				}
+				if (!request.Animations.Contains(animation) && reported.Add(animation))
+				{
+					ModLog.Info("enemy", $"{name} has no {request.Animations[0]} animation; using {animation} instead");
 				}
 				state.SetAnimation(animation, false);
 				using (var entry = state.GetCurrent(0))

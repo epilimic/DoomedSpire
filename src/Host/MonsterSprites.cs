@@ -179,6 +179,32 @@ internal static class MonsterSprites
 	}
 
 	/// <summary>
+	/// The animation to use for a request: the first of the wanted names the creature has. Creatures name their animations their own way (the Knowledge Demon has
+	/// attack_light, attack_medium and attack_heavy but no plain "attack"), so failing that, one that starts with the same word (attack, hurt, idle) is taken:
+	/// the "medium" one if there is one, otherwise the shortest name. Null if there is nothing like it.
+	/// </summary>
+	public static string? ChooseAnimation(IReadOnlyList<string> wanted, IReadOnlyList<string> has)
+	{
+		foreach (var name in wanted)
+		{
+			if (has.Contains(name))
+			{
+				return name;
+			}
+		}
+		foreach (var name in wanted)
+		{
+			var word = name.Split('_')[0];
+			var similar = has.Where(h => h.StartsWith(word, StringComparison.Ordinal)).ToList();
+			if (similar.Count > 0)
+			{
+				return similar.FirstOrDefault(h => h.Contains("medium", StringComparison.Ordinal)) ?? similar.OrderBy(h => h.Length).ThenBy(h => h, StringComparer.Ordinal).First();
+			}
+		}
+		return null;
+	}
+
+	/// <summary>
 	/// The creature's pose for a frame: standing and walking use its idle loop (spread over the loop), attacking its attack, being hurt its hurt, dying and
 	/// being gibbed its death (ending on the last pose). The names are the ones the game's creatures use; the first one a creature has is taken.
 	/// </summary>
