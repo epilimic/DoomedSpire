@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using ManagedDoom;
 using ManagedDoom.Audio;
@@ -40,10 +41,17 @@ internal sealed class DoomSession : IDisposable
 	/// </summary>
 	internal const int MouseSensitivity = 1;
 
-	/// <summary>Starts the game straight into episode 1, map 1 on the WAD at <paramref name="iwadPath"/>. Throws if the file is missing or not a usable WAD.</summary>
-	public static DoomSession Create(string iwadPath, AudioOptions? audioOptions = null)
+	/// <summary>Starts the game straight into episode 1, map 1 on the WAD at <paramref name="iwadPath"/>, with any add-on WADs on top. Throws if a file is missing or not a usable WAD.</summary>
+	public static DoomSession Create(string iwadPath, AudioOptions? audioOptions = null, IReadOnlyList<string>? extraWads = null)
 	{
-		var args = new CommandLineArgs(new[] { "-iwad", iwadPath, "-warp", "1", "1", "-nosound", "-nomusic", "-nomouse" });
+		var arguments = new List<string> { "-iwad", iwadPath, "-warp", "1", "1", "-nosound", "-nomusic", "-nomouse" };
+		if (extraWads != null && extraWads.Count > 0)
+		{
+			// Add-on WADs (here, the character's faces): where they have a lump with the same name as the game's, the add-on's is used.
+			arguments.Add("-file");
+			arguments.AddRange(extraWads);
+		}
+		var args = new CommandLineArgs(arguments.ToArray());
 		var config = new Config { mouse_sensitivity = MouseSensitivity };
 		GameContent? content = null;
 		try

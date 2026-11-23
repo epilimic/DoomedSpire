@@ -188,7 +188,9 @@ internal sealed class DoomView
 			var timer = Stopwatch.StartNew();
 			var path = wad?.Path ?? BuiltInWad.EnsureOnDisk();
 			var dataReady = timer.ElapsedMilliseconds;
-			var game = DoomSession.Create(path, new AudioOptions { OpenSoundFont = SoundFontData.Open, Report = ReportAudioProblem });
+			// The character's face for the status bar, as an add-on WAD (null keeps Doomguy). Made here, each new game, from the current tuning.
+			var faces = PlayerFace.TryBuild(path, Path.Combine(BuiltInWad.DataFolder, "data"));
+			var game = DoomSession.Create(path, new AudioOptions { OpenSoundFont = SoundFontData.Open, Report = ReportAudioProblem }, faces == null ? null : new[] { faces });
 			session = game;
 			rgba = new byte[game.Width * game.Height * 4];
 			image = Image.CreateFromData(game.Width, game.Height, false, Image.Format.Rgba8, rgba);

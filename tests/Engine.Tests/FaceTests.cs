@@ -1,0 +1,334 @@
+// Our own tests (not from upstream): replacing the status-bar face, src/Host/DoomPatch.cs and FaceFactory.cs, on the real shareware game data.
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using DoomedSpire.Host;
+using ManagedDoom;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace ManagedDoomTest
+{
+    [TestClass]
+    public class FaceTests
+    {
+        /// <summary>A made-up portrait to stand in for a character's picture (the real ones are the game's art and are not in the repo): a round face with hair, eyes and a mouth, an outline, and transparent corners.</summary>
+        private static Rgba Portrait(int size = 96)
+        {
+            var data = new byte[size * size * 4];
+            double c = (size - 1) / 2.0;
+            for (var y = 0; y < size; y++)
+            {
+                for (var x = 0; x < size; x++)
+                {
+                    var o = 4 * (y * size + x);
+                    double dx = x - c, dy = y - c, d = Math.Sqrt(dx * dx + dy * dy);
+                    if (d > size * 0.46) continue;                      // transparent outside the circle
+                    byte r = 226, g = 176, b = 138;                     // skin
+                    if (d > size * 0.42) { r = 40; g = 60; b = 120; }   // outline
+                    else if (y < size * 0.30) { r = 70; g = 45; b = 30; } // hair
+                    else if ((Math.Abs(dx + size * 0.17) < size * 0.07 || Math.Abs(dx - size * 0.17) < size * 0.07) && Math.Abs(dy + size * 0.06) < size * 0.05)
+                    { r = 250; g = 250; b = 250; }                       // eyes
+                    else if (Math.Abs(dy - size * 0.22) < size * 0.035 && Math.Abs(dx) < size * 0.14) { r = 170; g = 40; b = 50; } // mouth
+                    var shade = 1.0 - 0.25 * (dx / size);               // light from the left
+                    data[o] = (byte)(r * shade); data[o + 1] = (byte)(g * shade); data[o + 2] = (byte)(b * shade); data[o + 3] = 255;
+                }
+            }
+            return new Rgba(size, size, data);
+        }
+
+        private static IReadOnlyList<(string Name, byte[] Data)> Faces(FaceSettings settings, Rgba portrait = null)
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
+                return FaceFactory.Build(portrait ?? Portrait(), name =>
+                {
+                    var p = Patch.FromWad(wad, name);
+                    return new PatchSpec(p.Width, p.Height, p.LeftOffset, p.TopOffset);
+                }, palette, settings);
+            }
+        }
+
+        /// <summary>The picture's palette indices, row after row, -1 where transparent, read with the engine's own decoder.</summary>
+        private static int[] Decode(byte[] lump)
+        {
+            var patch = Patch.FromData("test", lump);
+            var pixels = Enumerable.Repeat(-1, patch.Width * patch.Height).ToArray();
+            for (var x = 0; x < patch.Width; x++)
+            {
+                foreach (var post in patch.Columns[x])
+                {
+                    for (var k = 0; k < post.Length; k++) pixels[(post.TopDelta + k) * patch.Width + x] = post.Data[post.Offset + k];
+                }
+            }
+            return pixels;
+        }
+
+        private static (double Red, double Brightness, double Saturation, double Gold) Look(byte[] lump, DoomPalette palette)
+        {
+            double red = 0, bright = 0, sat = 0, gold = 0; var n = 0;
+            foreach (var i in Decode(lump).Where(i => i >= 0))
+            {
+                var (r, g, b) = palette.Colour(i);
+                red += r - (g + b) / 2.0; bright += (r + g + b) / 3.0; sat += Math.Max(r, Math.Max(g, b)) - Math.Min(r, Math.Min(g, b)); gold += (r + g) / 2.0 - b; n++;
+            }
+            return (red / n, bright / n, sat / n, gold / n);
+        }
+
+        private static byte[] Lump(IReadOnlyList<(string Name, byte[] Data)> faces, string name) => faces.First(f => f.Name == name).Data;
+
+        [TestMethod]
+        public void AnEncodedPatchIsReadBackByTheEngineExactly()
+        {
+            var random = new Random(7);
+            const int w = 17, h = 23;
+            var pixels = new int[w * h];
+            for (var i = 0; i < pixels.Length; i++) pixels[i] = random.Next(5) == 0 ? -1 : random.Next(256);
+            for (var y = 0; y < h; y++) pixels[y * w + 3] = -1;   // a column with nothing in it
+            for (var y = 0; y < h; y++) pixels[y * w + 4] = y;    // a column with no gaps
+            var data = DoomPatch.Encode(w, h, 8, 25, pixels);
+            var patch = Patch.FromData("t", data);
+            Assert.AreEqual(w, patch.Width); Assert.AreEqual(h, patch.Height);
+            Assert.AreEqual(8, patch.LeftOffset); Assert.AreEqual(25, patch.TopOffset);
+            Assert.IsTrue(Decode(data).SequenceEqual(pixels), "every pixel comes back as written");
+        }
+
+        [TestMethod]
+        public void ThePaletteMatchFindsTheColourItself()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
+                for (var i = 0; i < 256; i++)
+                {
+                    var (r, g, b) = palette.Colour(i);
+                    Assert.AreEqual((r, g, b), palette.Colour(palette.Nearest(r, g, b)), "colour " + i);
+                }
+                var red = palette.Colour(palette.Nearest(255, 0, 0));
+                Assert.IsTrue(red.R > 150 && red.G < 60 && red.B < 60, "pure red matches a red");
+            }
+        }
+
+        [TestMethod]
+        public void TheEngineReadsAnAddOnWadAndPrefersItsLumps()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "doomedspire-pwad-" + Guid.NewGuid().ToString("N") + ".wad");
+            var replacement = DoomPatch.Encode(3, 3, 0, 0, new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9 });
+            File.WriteAllBytes(path, PwadWriter.Build(new List<(string, byte[])> { ("STFST00", replacement), ("MYLUMP", new byte[] { 9, 8, 7 }) }));
+            using (var wad = new Wad(WadPath.Doom1Shareware, path))
+            {
+                Assert.IsTrue(wad.ReadLump("STFST00").SequenceEqual(replacement), "the add-on's face wins over the game's");
+                Assert.IsTrue(wad.ReadLump("MYLUMP").SequenceEqual(new byte[] { 9, 8, 7 }), "a lump only the add-on has is found");
+                Assert.IsTrue(wad.GetLumpSize(wad.GetLumpNumber("STFST01")) > 100, "the game's other faces are untouched");
+            }
+        }
+
+        [TestMethod]
+        public void ThereIsAReplacementForEveryFaceTheGameHasAtItsOriginalSize()
+        {
+            var faces = Faces(FaceSettings.Default);
+            Assert.AreEqual(42, faces.Count);
+            Assert.AreEqual(42, faces.Select(f => f.Name).Distinct().Count());
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                foreach (var (name, data) in faces)
+                {
+                    Assert.IsTrue(wad.GetLumpNumber(name) != -1, name + " is not a lump the game has: the list of names is wrong");
+                    var original = Patch.FromWad(wad, name);
+                    var ours = Patch.FromData(name, data);
+                    Assert.AreEqual((original.Width, original.Height, original.LeftOffset, original.TopOffset), (ours.Width, ours.Height, ours.LeftOffset, ours.TopOffset), name);
+                }
+                // and the other way: every face the game draws (the engine's own list, StatusBarRenderer.cs:461-475) is one of ours
+                var drawn = new List<string>();
+                for (var i = 0; i < 5; i++)
+                {
+                    for (var j = 0; j < 3; j++) drawn.Add("STFST" + i + j);
+                    drawn.Add("STFTR" + i + "0"); drawn.Add("STFTL" + i + "0"); drawn.Add("STFOUCH" + i); drawn.Add("STFEVL" + i); drawn.Add("STFKILL" + i);
+                }
+                drawn.Add("STFGOD0"); drawn.Add("STFDEAD0");
+                Assert.IsTrue(drawn.OrderBy(n => n).SequenceEqual(faces.Select(f => f.Name).OrderBy(n => n)));
+
+                Directory.CreateDirectory("out");
+                var sheet = FaceFactory.Sheet(faces, new DoomPalette(wad.ReadLump("PLAYPAL")), 8);
+                Png.Save("out/face-sheet.png", sheet.Width, sheet.Height, sheet.Data); // look at it: tests/Engine.Tests/out/face-sheet.png
+            }
+        }
+
+        [TestMethod]
+        public void TheFacesAreTheSameEveryTime()
+        {
+            var a = Faces(FaceSettings.Default);
+            var b = Faces(FaceSettings.Default);
+            Assert.IsTrue(a.Zip(b, (x, y) => x.Name == y.Name && x.Data.SequenceEqual(y.Data)).All(same => same));
+        }
+
+        [TestMethod]
+        public void LowerHealthLooksPalerRedderAndDarker()
+        {
+            var faces = Faces(FaceSettings.Default);
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
+                var looks = Enumerable.Range(0, 5).Select(i => Look(Lump(faces, "STFST" + i + "0"), palette)).ToArray();
+                for (var i = 1; i < 5; i++)
+                {
+                    Assert.IsTrue(looks[i].Red > looks[i - 1].Red - 0.5, $"level {i} is at least as red as level {i - 1}");
+                    Assert.IsTrue(looks[i].Brightness < looks[i - 1].Brightness + 0.5, $"level {i} is at least as dark as level {i - 1}");
+                }
+                Assert.IsTrue(looks[4].Red > looks[0].Red + 15, $"the worst level is clearly redder ({looks[0].Red:0} to {looks[4].Red:0})");
+                Assert.IsTrue(looks[4].Brightness < looks[0].Brightness - 8, "and clearly darker");
+                Assert.IsFalse(Lump(faces, "STFST00").SequenceEqual(Lump(faces, "STFST40")));
+            }
+        }
+
+        /// <summary>Where each pixel of a face is on screen, relative to where faces are drawn (so faces of different sizes can be compared): position to palette index.</summary>
+        private static Dictionary<(int U, int V), int> OnScreen(byte[] lump)
+        {
+            var patch = Patch.FromData("t", lump);
+            var pixels = Decode(lump);
+            var map = new Dictionary<(int, int), int>();
+            for (var i = 0; i < pixels.Length; i++)
+            {
+                if (pixels[i] >= 0) map[(i % patch.Width - patch.LeftOffset, i / patch.Width - patch.TopOffset)] = pixels[i];
+            }
+            return map;
+        }
+
+        [TestMethod]
+        public void WithTheDamageSettingAtZeroEveryHealthLevelLooksTheSame()
+        {
+            var faces = Faces(FaceSettings.Default with { Damage = 0f });
+            var healthy = OnScreen(Lump(faces, "STFST00"));
+            for (var i = 1; i < 5; i++)
+            {
+                var other = OnScreen(Lump(faces, "STFST" + i + "0"));
+                Assert.IsTrue(healthy.Count == other.Count && healthy.All(kv => other.TryGetValue(kv.Key, out var v) && v == kv.Value), "level " + i + " looks like level 0 on screen");
+            }
+        }
+
+        [TestMethod]
+        public void TheFaceKeepsItsSizeAndPlaceAcrossHealthLevelsEvenThoughTheOriginalPicturesDifferInSize()
+        {
+            // The original face pictures are 24 x 29, 24 x 30 or 24 x 31; a replacement that fills each one separately would grow and shrink as health changes.
+            var faces = Faces(FaceSettings.Default);
+            var shape = OnScreen(Lump(faces, "STFST00")).Keys.ToHashSet();
+            for (var i = 1; i < 5; i++)
+            {
+                Assert.IsTrue(shape.SetEquals(OnScreen(Lump(faces, "STFST" + i + "0")).Keys), $"level {i} covers the same pixels of the screen as level 0");
+            }
+            Assert.IsTrue(shape.SetEquals(OnScreen(Lump(faces, "STFEVL0")).Keys), "and so does the grin");
+            Assert.IsTrue(shape.Count > 300, "the face really fills its place");
+        }
+
+        [TestMethod]
+        public void TurningFacesAreNotCutOffAndStraightLooksLoseAtMostAColumnOfEdge()
+        {
+            var faces = Faces(FaceSettings.Default);
+            for (var level = 0; level < 5; level++)
+            {
+                var whole = OnScreen(Lump(faces, "STFST" + level + "0")).Count;
+                foreach (var turn in new[] { "STFTR" + level + "0", "STFTL" + level + "0" })
+                {
+                    Assert.AreEqual(whole, OnScreen(Lump(faces, turn)).Count, turn + " shows all of the face");
+                }
+                foreach (var look in new[] { "STFST" + level + "1", "STFST" + level + "2" })
+                {
+                    var shown = OnScreen(Lump(faces, look)).Count;
+                    Assert.IsTrue(whole - shown >= 0 && whole - shown <= 20, $"{look} loses {whole - shown} pixels of {whole}: at most one column of the edge");
+                }
+            }
+        }
+
+        [TestMethod]
+        public void TheLooksMoveTheFaceAndTheOtherExpressionsAreDifferent()
+        {
+            var faces = Faces(FaceSettings.Default);
+            var names = new[] { "STFST00", "STFST01", "STFST02", "STFTR00", "STFTL00", "STFOUCH0", "STFEVL0", "STFKILL0", "STFGOD0", "STFDEAD0" };
+            for (var i = 0; i < names.Length; i++)
+            {
+                for (var j = i + 1; j < names.Length; j++)
+                {
+                    Assert.IsFalse(Lump(faces, names[i]).SequenceEqual(Lump(faces, names[j])), $"{names[i]} and {names[j]} should not be the same picture");
+                }
+            }
+        }
+
+        [TestMethod]
+        public void DeadIsGreyAndDarkGodIsGolden()
+        {
+            var faces = Faces(FaceSettings.Default);
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
+                var normal = Look(Lump(faces, "STFST00"), palette);
+                var dead = Look(Lump(faces, "STFDEAD0"), palette);
+                var god = Look(Lump(faces, "STFGOD0"), palette);
+                Assert.IsTrue(dead.Brightness < normal.Brightness - 20, "dead is much darker");
+                Assert.IsTrue(dead.Saturation < normal.Saturation, "and less colourful");
+                Assert.IsTrue(god.Gold > normal.Gold + 10, "god mode is golden");
+            }
+        }
+
+        [TestMethod]
+        public void ACropOfThePictureChangesTheFace()
+        {
+            var whole = Faces(FaceSettings.Default);
+            var zoomed = Faces(FaceSettings.Default with { CropLeft = 0.25f, CropTop = 0.25f, CropWidth = 0.5f, CropHeight = 0.5f });
+            Assert.IsFalse(Lump(whole, "STFST00").SequenceEqual(Lump(zoomed, "STFST00")));
+        }
+
+        [TestMethod]
+        public void ANarrowPictureStillGivesAFullFace()
+        {
+            var wide = new Rgba(40, 10, Enumerable.Range(0, 40 * 10 * 4).Select(i => (byte)(i % 4 == 3 ? 255 : 120)).ToArray());
+            var faces = Faces(FaceSettings.Default, wide);
+            Assert.IsTrue(Decode(Lump(faces, "STFST00")).All(i => i >= 0), "an opaque picture fills the whole face");
+        }
+
+        [TestMethod]
+        public void TheFaceShowsInTheGameAndOnlyThere()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "doomedspire-faces-" + Guid.NewGuid().ToString("N") + ".wad");
+            File.WriteAllBytes(path, PwadWriter.Build(Faces(FaceSettings.Default)));
+
+            byte[] plain, custom; int width;
+            using (var session = DoomSession.Create(WadPath.Doom1Shareware))
+            {
+                width = session.Width; plain = new byte[width * session.Height * 4]; session.RenderFirstFrame(plain);
+            }
+            using (var session = DoomSession.Create(WadPath.Doom1Shareware, null, new[] { path }))
+            {
+                custom = new byte[plain.Length]; session.RenderFirstFrame(custom);
+            }
+
+            int changedInside = 0, changedOutside = 0;
+            for (var i = 0; i < plain.Length; i += 4)
+            {
+                if (plain[i] == custom[i] && plain[i + 1] == custom[i + 1] && plain[i + 2] == custom[i + 2]) continue;
+                int p = i / 4, x = p % width, y = p / width;
+                if (x >= 270 && x < 350 && y >= 320 && y < 400) changedInside++; else changedOutside++;
+            }
+            Assert.IsTrue(changedInside > 200, $"the face area should look different, {changedInside} pixels did");
+            Assert.AreEqual(0, changedOutside, "nothing else on the screen changes");
+        }
+
+        [TestMethod]
+        public void TheTunerCanFindTheFaceNumbers()
+        {
+            var fields = typeof(FaceTuning).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly);
+            Assert.AreEqual(8, fields.Length);
+            foreach (var field in fields)
+            {
+                Assert.IsFalse(field.IsInitOnly || field.IsLiteral, field.Name);
+                Assert.IsTrue(field.FieldType == typeof(float) || field.FieldType == typeof(int) || field.FieldType == typeof(bool), field.Name);
+                var attribute = field.GetCustomAttributes(false).FirstOrDefault(a => a.GetType().Name == "TunableAttribute");
+                Assert.IsTrue(attribute != null, field.Name + " needs the Tunable attribute");
+                Assert.AreEqual("Doomed Spire face", attribute.GetType().GetProperty("Group").GetValue(attribute) as string);
+                Assert.IsFalse(string.IsNullOrEmpty(attribute.GetType().GetProperty("Tip").GetValue(attribute) as string), field.Name + " has a tip");
+            }
+            Assert.AreEqual(FaceSettings.Default, FaceSettings.FromTuning(), "the defaults are the plain settings");
+        }
+    }
+}
