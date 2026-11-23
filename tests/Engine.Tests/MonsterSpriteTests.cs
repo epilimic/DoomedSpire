@@ -75,18 +75,39 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
-        public void OnlyTheSharewareGameIsReplaced()
+        public void OnlyTheOriginalDoom1IsReplaced()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))
             {
-                Assert.IsTrue(MonsterSprites.IsShareware(wad));
+                Assert.IsTrue(MonsterSprites.IsOriginalDoom1(wad));
             }
+            // Freedoom's first game has a second episode like the full DOOM, so only its own lumps tell it apart; its second game is a DOOM II replacement
             foreach (var other in new[] { WadPath.Doom1, WadPath.Doom2 })
             {
                 if (!File.Exists(other)) continue; // Freedoom not installed: nothing to check
                 using (var wad = new Wad(other))
                 {
-                    Assert.IsFalse(MonsterSprites.IsShareware(wad), other);
+                    Assert.IsFalse(MonsterSprites.IsOriginalDoom1(wad), other);
+                }
+            }
+        }
+
+        [TestMethod]
+        public void TheFourMonstersOfTheFullGameAreSortedToo()
+        {
+            // The full DOOM is not in the repo; Freedoom has pictures with the same names, which is enough to check the frame sorting.
+            if (!File.Exists(WadPath.Doom1)) return;
+            using (var wad = new Wad(WadPath.Doom1))
+            {
+                foreach (var type in new[] { MobjType.Skull, MobjType.Head, MobjType.Cyborg, MobjType.Spider })
+                {
+                    var sprite = MonsterSprites.SpriteName(type);
+                    var frames = MonsterSprites.Frames(type, MonsterSprites.Letters(wad, sprite));
+                    Assert.IsTrue(frames.Any(f => f.Role == FrameRole.Walk), sprite + " walks");
+                    Assert.IsTrue(frames.Any(f => f.Role == FrameRole.Attack), sprite + " attacks");
+                    Assert.IsTrue(frames.Any(f => f.Role == FrameRole.Pain), sprite + " is hurt");
+                    Assert.IsTrue(frames.Count(f => f.Role == FrameRole.Death) >= 5, sprite + " dies");
+                    Assert.IsTrue(MonsterSprites.OriginalHeight(wad, sprite) > 30, sprite + " has a height");
                 }
             }
         }

@@ -145,11 +145,13 @@ internal static class MonsterSprites
 	}
 
 	/// <summary>
-	/// True for the shareware DOOM (episode 1 only), the one game whose monsters are replaced: it has E1M1, no second episode and no DOOM II maps, and the
-	/// imp's pictures. Freedoom, the full DOOM and DOOM II keep their own monsters.
+	/// True for the original DOOM 1 (shareware, registered or Ultimate), the games whose monsters are replaced: it has E1M1 and the imp's pictures, no DOOM II
+	/// maps, and none of the lumps Freedoom carries (Freedoom is a replacement game, with its own monsters and a second episode like the full DOOM, so the
+	/// maps alone cannot tell them apart). DOOM II and any other game keep their own monsters.
 	/// </summary>
-	public static bool IsShareware(Wad wad) =>
-		wad.GetLumpNumber("E1M1") != -1 && wad.GetLumpNumber("E2M1") == -1 && wad.GetLumpNumber("MAP01") == -1 && wad.GetLumpNumber("TROOA1") != -1;
+	public static bool IsOriginalDoom1(Wad wad) =>
+		wad.GetLumpNumber("E1M1") != -1 && wad.GetLumpNumber("MAP01") == -1 && wad.GetLumpNumber("TROOA1") != -1
+		&& wad.GetLumpNumber("FREEDOOM") == -1 && wad.GetLumpNumber("DEHACKED") == -1;
 }
 
 /// <summary>Turns captured pictures of a creature into the picture lumps of a DOOM sprite. Godot-free.</summary>
