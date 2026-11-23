@@ -28,3 +28,4 @@ workshop/workshop.json
 __pycache__/
 work/
 tests/Engine.Tests/wads/
+tests/Engine.Tests/out/

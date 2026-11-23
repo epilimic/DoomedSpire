@@ -7,7 +7,7 @@ namespace DoomedSpire;
 /// <summary>
 /// The button on the map screen and the popup panel it opens. Plain Godot nodes only, no custom Godot classes: a dll-only mod has no script
 /// registration, so a subclass of a Godot node could not override _Ready or _Input. Behaviour is wired with signals instead.
-/// For now the popup only holds a placeholder where the game will be drawn.
+/// For now the popup shows one still frame of DOOM (see FrameView).
 /// </summary>
 internal static class DoomPopup
 {
@@ -22,10 +22,14 @@ internal static class DoomPopup
 			return;
 		}
 
-		var popup = BuildPopup(out var closeButton);
+		var popup = BuildPopup(out var closeButton, out var view);
 		var button = BuildButton();
 
-		button.Pressed += () => ModLog.Try("map", "opening the popup", () => SetOpen(popup, true));
+		button.Pressed += () => ModLog.Try("map", "opening the popup", () =>
+		{
+			SetOpen(popup, true);
+			view.EnsureDrawn();
+		});
 		closeButton.Pressed += () => ModLog.Try("map", "closing the popup", () => SetOpen(popup, false));
 		// The map screen's own Closed signal (NMapScreen.cs, emitted at the start of Close) also closes the popup,
 		// so the player is never left inside it while the game moves on.
@@ -69,8 +73,8 @@ internal static class DoomPopup
 		return button;
 	}
 
-	/// <summary>A dimmed backdrop that swallows clicks (so the map underneath cannot be dragged) and a centred panel with a title, a Close button and a 4:3 placeholder.</summary>
-	private static Control BuildPopup(out Button closeButton)
+	/// <summary>A dimmed backdrop that swallows clicks (so the map underneath cannot be dragged) and a centred panel with a title, a Close button and a 4:3 area for the picture.</summary>
+	private static Control BuildPopup(out Button closeButton, out FrameView view)
 	{
 		var root = new Control { Name = PopupName, Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
 		root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
@@ -117,15 +121,7 @@ internal static class DoomPopup
 		};
 		box.AddChild(screen);
 
-		var placeholder = new Label
-		{
-			Text = "DOOM goes here",
-			HorizontalAlignment = HorizontalAlignment.Center,
-			VerticalAlignment = VerticalAlignment.Center,
-			MouseFilter = Control.MouseFilterEnum.Ignore,
-		};
-		placeholder.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-		screen.AddChild(placeholder);
+		view = new FrameView(screen);
 
 		return root;
 	}

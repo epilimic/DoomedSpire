@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <Compile Include="../../src/ManagedDoom/**/*.cs" />
+    <Compile Include="../../src/Host/**/*.cs" />
     <Compile Include="*.cs;upstream/**/*.cs" />
   </ItemGroup>
 
