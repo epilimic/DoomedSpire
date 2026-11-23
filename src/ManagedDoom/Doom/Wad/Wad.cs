@@ -48,10 +48,32 @@ namespace ManagedDoom
                 }
 
                 gameMode = GetGameMode(names);
-                // DoomedSpire change: the file name "doom" is the Ultimate DOOM (4 episodes) to the engine, but the registered DOOM (3 episodes) has the same name.
-                // Without episode 4 it is the registered game, whose episode menu has three entries; the Ultimate one asks for the picture M_EPI4, which the
-                // registered game does not have, and fails every time the menu is drawn.
-                if (gameMode == GameMode.Retail && GetLumpNumber("E4M1") == -1)
+                // DoomedSpire change: the engine tells the game from the file name, and only from an exact name (doom, doom1, freedoom1, ...), so a file with any other
+                // name ("doom1-shareware-1.9.wad", "freedoom1-0.13.0.wad") was left undetermined, which shows the three-episode menu even for the shareware game
+                // (whose second episode is not there to play). So where the name does not say, the game is told from the maps it has: no E1M1 and a MAP01 is DOOM II,
+                // E4M1 is the Ultimate DOOM, E2M1 the registered one, only E1M1 the shareware one. And the name "doom" is both the Ultimate DOOM (four episodes) and
+                // the registered DOOM (three), which have the same file name; without E4M1 it is the registered one, whose menu has three entries (the Ultimate
+                // menu asks for the picture M_EPI4, which the registered game does not have, and fails every time the menu is drawn).
+                if (gameMode == GameMode.Indetermined)
+                {
+                    if (GetLumpNumber("MAP01") != -1 && GetLumpNumber("E1M1") == -1)
+                    {
+                        gameMode = GameMode.Commercial;
+                    }
+                    else if (GetLumpNumber("E4M1") != -1)
+                    {
+                        gameMode = GameMode.Retail;
+                    }
+                    else if (GetLumpNumber("E2M1") != -1)
+                    {
+                        gameMode = GameMode.Registered;
+                    }
+                    else if (GetLumpNumber("E1M1") != -1)
+                    {
+                        gameMode = GameMode.Shareware;
+                    }
+                }
+                else if (gameMode == GameMode.Retail && GetLumpNumber("E4M1") == -1)
                 {
                     gameMode = GameMode.Registered;
                 }

@@ -642,7 +642,8 @@ internal sealed class DoomView
 	{
 		try
 		{
-			if (inputEvent is InputEventMouseMotion motion)
+			// Not while a tool is open on top (the mouse is the tool's, and the game waits: what was turned meanwhile would all come at once when it carries on).
+			if (inputEvent is InputEventMouseMotion motion && active && !yielding)
 			{
 				session?.AddMouseTurn(motion.Relative.X);
 			}

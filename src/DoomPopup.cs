@@ -270,16 +270,18 @@ internal static class DoomPopup
 
 		var lastSize = Vector2.Zero;
 		var lastValues = new float[7];
+		var values = new float[7]; // reused every frame, so looking for a change makes nothing for the garbage collector
 		refreshLayout = () =>
 		{
 			var size = root.Size;
-			var values = new[] { CrtTuning.Scale, CrtTuning.OffsetX, CrtTuning.OffsetY, CrtTuning.ScreenLeft, CrtTuning.ScreenTop, CrtTuning.ScreenWidth, CrtTuning.ScreenHeight };
+			values[0] = CrtTuning.Scale; values[1] = CrtTuning.OffsetX; values[2] = CrtTuning.OffsetY; values[3] = CrtTuning.ScreenLeft;
+			values[4] = CrtTuning.ScreenTop; values[5] = CrtTuning.ScreenWidth; values[6] = CrtTuning.ScreenHeight;
 			if (size == lastSize && values.AsSpan().SequenceEqual(lastValues))
 			{
 				return;
 			}
 			lastSize = size;
-			lastValues = values;
+			values.CopyTo(lastValues, 0);
 
 			var (monitorBox, gameBox) = CrtLayout.Current(size.X, size.Y);
 			monitor.Position = new Vector2(monitorBox.X, monitorBox.Y);

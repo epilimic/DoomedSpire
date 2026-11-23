@@ -50,6 +50,7 @@ internal static class EnemySprites
 	{
 		try
 		{
+			EngineBaseline.Restore(); // the monsters' states are read below: from the engine's own tables, not a game loaded before's (see EngineBaseline)
 			using var wad = new Wad(iwadPath);
 			if (!MonsterSprites.IsOriginalDoom1(wad))
 			{

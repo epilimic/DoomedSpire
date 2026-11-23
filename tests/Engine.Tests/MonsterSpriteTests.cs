@@ -77,6 +77,11 @@ namespace ManagedDoomTest
             Assert.AreEqual(GameMode.Retail, modeOf("DOOM.WAD", new[] { "E1M1", "E4M1" }), "episode 4: the Ultimate DOOM");
             Assert.AreEqual(GameMode.Shareware, modeOf("DOOM1.WAD", new[] { "E1M1" }), "the shareware game is not changed");
             Assert.AreEqual(GameMode.Retail, modeOf("freedoom1.wad", new[] { "E1M1", "E4M1" }), "nor is Freedoom's first game");
+            // a file name the engine does not know: the maps decide (the built-in game is called doom1-shareware-1.9.wad, which was "undetermined" and offered episodes 2 and 3)
+            Assert.AreEqual(GameMode.Shareware, modeOf("doom1-shareware-1.9.wad", new[] { "E1M1" }));
+            Assert.AreEqual(GameMode.Registered, modeOf("my doom.wad", new[] { "E1M1", "E2M1", "E3M1" }));
+            Assert.AreEqual(GameMode.Retail, modeOf("freedoom1-0.13.0.wad", new[] { "E1M1", "E2M1", "E3M1", "E4M1" }));
+            Assert.AreEqual(GameMode.Commercial, modeOf("some doom2 copy.wad", new[] { "MAP01", "MAP02" }));
         }
 
         [TestMethod]
@@ -118,6 +123,40 @@ namespace ManagedDoomTest
             Assert.IsTrue(MonsterSprites.IsJumpy(Blob(40, 150, 200), stand), "the clam's rear-up was 151% tall");
             Assert.IsTrue(MonsterSprites.IsJumpy(new CapturedFrame(stand.Image, stand.OriginX + 100, stand.OriginY), stand), "far to the side");
             Assert.IsTrue(MonsterSprites.IsJumpy(new CapturedFrame(stand.Image, stand.OriginX, stand.OriginY + 80), stand), "in the air");
+        }
+
+        [TestMethod]
+        public void ALoadedGamesChangesToTheEnginesTablesAreUndoneForTheNextGame()
+        {
+            EngineBaseline.Restore(); // remembers the tables as they are now
+            var troop = DoomInfo.MobjInfos[(int)MobjType.Troop];
+            var health = troop.SpawnHealth;
+            var tics = DoomInfo.States[(int)MobjState.TrooRun1].Tics;
+            var startHealth = DoomInfo.DeHackEdConst.InitialHealth;
+            var states = DoomInfo.States.Length;
+            // what a DeHackEd patch does: change them in place
+            troop.SpawnHealth = health + 1000;
+            DoomInfo.States[(int)MobjState.TrooRun1].Tics = tics + 77;
+            DoomInfo.DeHackEdConst.InitialHealth = startHealth + 50;
+            var spare = DoomInfo.States[5];
+            DoomInfo.States[5] = DoomInfo.States[6]; // or swap whole entries
+            try
+            {
+                EngineBaseline.Restore();
+                Assert.AreEqual(health, DoomInfo.MobjInfos[(int)MobjType.Troop].SpawnHealth, "the imp's health");
+                Assert.AreEqual(tics, DoomInfo.States[(int)MobjState.TrooRun1].Tics, "a state's length");
+                Assert.AreEqual(startHealth, DoomInfo.DeHackEdConst.InitialHealth, "a constant");
+                Assert.IsTrue(ReferenceEquals(spare, DoomInfo.States[5]), "an entry that was swapped for another");
+                Assert.AreEqual(states, DoomInfo.States.Length);
+            }
+            finally
+            {
+                // whatever happened, leave the tables as they were for the other tests
+                troop.SpawnHealth = health;
+                DoomInfo.States[(int)MobjState.TrooRun1].Tics = tics;
+                DoomInfo.DeHackEdConst.InitialHealth = startHealth;
+                DoomInfo.States[5] = spare;
+            }
         }
 
         [TestMethod]

@@ -44,6 +44,7 @@ internal sealed class DoomSession : IDisposable
 	/// <summary>Starts the game straight into episode 1, map 1 on the WAD at <paramref name="iwadPath"/>, with any add-on WADs on top. Throws if a file is missing or not a usable WAD.</summary>
 	public static DoomSession Create(string iwadPath, AudioOptions? audioOptions = null, IReadOnlyList<string>? extraWads = null)
 	{
+		EngineBaseline.Restore(); // a game that was loaded before may have changed the engine's tables (see EngineBaseline)
 		var arguments = new List<string> { "-iwad", iwadPath, "-warp", "1", "1", "-nosound", "-nomusic", "-nomouse" };
 		if (extraWads != null && extraWads.Count > 0)
 		{
