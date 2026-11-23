@@ -247,11 +247,11 @@ namespace ManagedDoomTest
                         var shown = OnScreen(turn).Count;
                         Assert.IsTrue(shown > whole * 0.9 && shown < whole * 1.1, $"level {level}: a turned head covers {shown} pixels, a straight one {whole}");
                     }
-                    // ...and the features have moved toward the side it turns to
+                    // ...and the features have slid sideways: the turn-left picture is the one drawn (features slid right), the turn-right one is its mirror image
                     var eyes = EyeColumn(straight, palette);
                     Assert.IsFalse(double.IsNaN(eyes), "the test portrait's eyes are found");
-                    Assert.IsTrue(EyeColumn(right, palette) > eyes + 1.5, $"level {level}: turning right moves the eyes right ({eyes:0.0} to {EyeColumn(right, palette):0.0})");
-                    Assert.IsTrue(EyeColumn(left, palette) < eyes - 1.5, $"level {level}: turning left moves the eyes left ({eyes:0.0} to {EyeColumn(left, palette):0.0})");
+                    Assert.IsTrue(EyeColumn(left, palette) > eyes + 1.5, $"level {level}: the turn-left picture has the eyes slid right ({eyes:0.0} to {EyeColumn(left, palette):0.0})");
+                    Assert.IsTrue(EyeColumn(right, palette) < eyes - 1.5, $"level {level}: and the turn-right picture, its mirror, has them slid left ({eyes:0.0} to {EyeColumn(right, palette):0.0})");
                     foreach (var look in new[] { "STFST" + level + "1", "STFST" + level + "2" })
                     {
                         var shown = OnScreen(Lump(faces, look)).Count;

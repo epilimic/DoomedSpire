@@ -113,11 +113,11 @@ internal static class FaceFactory
 			var s = spec(name);
 			if (kind == FaceKind.TurnLeft || kind == FaceKind.TurnRight)
 			{
-				// The head turned right is drawn straight into its lump's own rectangle (wider than the straight faces, to hold the turned head). The turn left
-				// is that very face mirrored about the middle of the head, then cut to the turn-left lump's rectangle.
-				var rightSpec = kind == FaceKind.TurnRight ? s : spec("STFTR" + pain + "0");
-				var turned = TurnHead(shaded, reference, rightSpec);
-				var image = kind == FaceKind.TurnRight ? turned : Mirror(turned, reference, rightSpec, s);
+				// The turned head is drawn straight into the turn-left lump's own rectangle (wider than the straight faces, to hold the turned head). The turn right
+				// is that very face mirrored about the middle of the head, then cut to the turn-right lump's rectangle.
+				var leftSpec = kind == FaceKind.TurnLeft ? s : spec("STFTL" + pain + "0");
+				var turned = TurnHead(shaded, reference, leftSpec);
+				var image = kind == FaceKind.TurnLeft ? turned : Mirror(turned, reference, leftSpec, s);
 				lumps.Add((name, DoomPatch.Encode(s.Width, s.Height, s.Left, s.Top, Quantize(image, palette))));
 				continue;
 			}
@@ -349,7 +349,7 @@ internal static class FaceFactory
 	private const double TurnAmount = 0.35;
 
 	/// <summary>
-	/// The face with the head turned to the right, drawn into the rectangle of the turn-right lump. The head's outline stays where it is and what is inside
+	/// The face with its features slid to the right, drawn into the rectangle of the turn-left lump. The head's outline stays where it is and what is inside
 	/// it slides to the right: the features move over, the far side is squeezed and the near side stretched (across the head, a position
 	/// <c>u</c> from -1 to 1 goes to <c>u + d (1 - u squared)</c>, which moves the middle by <c>d</c> and leaves both edges where they are). The rows stay where they are.
 	/// </summary>
