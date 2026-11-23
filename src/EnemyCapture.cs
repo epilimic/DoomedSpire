@@ -76,6 +76,11 @@ internal static class EnemyCapture
 			}
 			visuals.Scale = new Vector2(Math.Clamp(scale, 0.05f, 4f), Math.Clamp(scale, 0.05f, 4f));
 
+			// Some creatures keep their body in a skin the game chooses when it makes them (the Skulking Colony's is "normal" or "phobia"; without one most of it is
+			// invisible), so do what the game does (NCreature.cs, where it makes the creature): the creature's own skin, then the skin for the phobia setting.
+			ModLog.Try("enemy", $"setting up the skin of {name}", () => visuals.SetUpSkin(monster));
+			ModLog.Try("enemy", $"setting up the phobia mode skin of {name}", () => visuals.UpdatePhobiaMode(monster));
+
 			var state = sprite.GetAnimationState();
 			var skeleton = sprite.GetSkeleton();
 			if (skeleton == null)
