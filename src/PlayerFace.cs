@@ -56,25 +56,41 @@ internal static class PlayerFace
 			Directory.CreateDirectory(folder);
 			var id = character.Id.Entry.ToLowerInvariant();
 
-			// A sheet to paint on: every face at one picture pixel per face pixel on a transparent background, , the same colour in every one (no paleness, redness or tints) and never any
-			// blood: only the head's position and angle differ, as in Doomguy's own faces (the colour and blood are for the player to add). It is made again at every new game, so it is never the file that holds the player's work (that is the "painted" one below).
+			// A sheet to paint on for every playable character (so all of them can be painted without playing each), made again at every new game, so it is never the
+			// file that holds the player's work (that is the "painted" one below). See WriteSheetsToPaint.
 			var toPaint = Path.Combine(folder, id + "-faces-to-paint.png");
-			WriteSheet(FaceFactory.Sheet(FaceFactory.Build(picture, spec, palette, settings with { Blood = 0f, Neutral = true }), palette, 1, transparentBackground: true), toPaint);
+			WriteSheetsToPaint(folder, spec, palette, settings);
 
-			// The player's own painted version of that sheet, if they saved one under this name, is used instead of the generated faces.
+			// The faces painted for this character, if there are any, are used instead of the generated ones: first the player's own file in the data folder (to try
+			// out a sheet before it is built in), then the one built into the mod (assets/<character>-faces.png).
 			var painted = Path.Combine(folder, id + "-faces-painted.png");
-			var usedPainted = false;
+			string? how = null;
 			if (File.Exists(painted))
 			{
 				try
 				{
-					var sheet = LoadPicture(painted);
-					lumps = FaceSheetImport.Read(sheet, spec, palette);
-					usedPainted = true;
+					lumps = FaceSheetImport.Read(LoadPicture(painted), spec, palette);
+					how = "using your painted faces from the data folder for";
 				}
 				catch (Exception e)
 				{
-					ModLog.Fail("face", "reading your painted face sheet (the generated faces are used instead)", e);
+					ModLog.Fail("face", "reading your painted face sheet (the next choice is used instead)", e);
+				}
+			}
+			if (how == null)
+			{
+				try
+				{
+					var shipped = BuiltInSheet(id);
+					if (shipped != null)
+					{
+						lumps = FaceSheetImport.Read(shipped, spec, palette);
+						how = "using the painted faces built into the mod for";
+					}
+				}
+				catch (Exception e)
+				{
+					ModLog.Fail("face", "reading the painted face sheet built into the mod (the generated faces are used instead)", e);
 				}
 			}
 
@@ -83,7 +99,7 @@ internal static class PlayerFace
 			var path = Path.Combine(folder, "face.wad");
 			File.WriteAllBytes(path, PwadWriter.Build(lumps));
 
-			ModLog.Info("face", $"{(usedPainted ? "using your painted faces for" : "made the faces of")} {character.Id.Entry} ({lumps.Count} faces, from a {picture.Width}x{picture.Height} picture, source {FaceTuning.Source}); " +
+			ModLog.Info("face", $"{how ?? "made the faces of"} {character.Id.Entry} ({lumps.Count} faces, from a {picture.Width}x{picture.Height} picture, source {FaceTuning.Source}); " +
 				$"a preview is in {preview}; to paint your own, edit {toPaint} and save it as {painted}");
 			return path;
 		}
@@ -92,6 +108,53 @@ internal static class PlayerFace
 			ModLog.Fail("face", "making the character's face", e);
 			return null;
 		}
+	}
+
+	/// <summary>
+	/// Writes <c>&lt;character&gt;-faces-to-paint.png</c> for every playable character, not only the one in this run. A character that cannot be made is skipped (the log says why).
+	/// The sheet is every face on a transparent background, 1:1, the same colour in every one and without blood (<see cref="FaceSettings.Neutral"/>).
+	/// </summary>
+	private static void WriteSheetsToPaint(string folder, Func<string, PatchSpec> spec, DoomPalette palette, FaceSettings settings)
+	{
+		foreach (var character in MegaCrit.Sts2.Core.Models.ModelDb.AllCharacters)
+		{
+			try
+			{
+				if (!character.IsPlayable)
+				{
+					continue;
+				}
+				var picture = ReadPicture(character);
+				if (picture == null)
+				{
+					continue;
+				}
+				var faces = FaceFactory.Build(picture, spec, palette, settings with { Blood = 0f, Neutral = true });
+				WriteSheet(FaceFactory.Sheet(faces, palette, 1, transparentBackground: true), Path.Combine(folder, character.Id.Entry.ToLowerInvariant() + "-faces-to-paint.png"));
+			}
+			catch (Exception e)
+			{
+				ModLog.Fail("face", "writing the sheet to paint for " + character.Id.Entry, e);
+			}
+		}
+	}
+
+	/// <summary>The faces painted for a character and built into the mod, <c>assets/&lt;character&gt;-faces.png</c> (the same layout as the sheet to paint on), or null if there is none.</summary>
+	private static Rgba? BuiltInSheet(string id)
+	{
+		using var stream = typeof(PlayerFace).Assembly.GetManifestResourceStream(id + "-faces.png");
+		if (stream == null)
+		{
+			return null;
+		}
+		using var buffer = new MemoryStream();
+		stream.CopyTo(buffer);
+		var image = new Image();
+		if (image.LoadPngFromBuffer(buffer.ToArray()) != Godot.Error.Ok)
+		{
+			throw new InvalidDataException(id + "-faces.png could not be read as a picture");
+		}
+		return ToPixels(image) ?? throw new InvalidDataException(id + "-faces.png is empty");
 	}
 
 	/// <summary>The character's picture, as the game has it (the source is FaceTuning.Source), as plain pixels. Null if it cannot be read.</summary>
