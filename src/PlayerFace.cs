@@ -45,18 +45,46 @@ internal static class PlayerFace
 			}
 
 			var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
-			var lumps = FaceFactory.Build(picture, name =>
+			Func<string, PatchSpec> spec = name =>
 			{
 				var original = Patch.FromWad(wad, name);
 				return new PatchSpec(original.Width, original.Height, original.LeftOffset, original.TopOffset);
-			}, palette, FaceSettings.FromTuning());
+			};
+			var settings = FaceSettings.FromTuning();
+			var lumps = FaceFactory.Build(picture, spec, palette, settings);
 
 			Directory.CreateDirectory(folder);
+			var id = character.Id.Entry.ToLowerInvariant();
+
+			// A sheet to paint on: every face at one picture pixel per face pixel on a transparent background, and never any blood (that is for the player
+			// to add). It is made again at every new game, so it is never the file that holds the player's work (that is the "painted" one below).
+			var toPaint = Path.Combine(folder, id + "-faces-to-paint.png");
+			WriteSheet(FaceFactory.Sheet(FaceFactory.Build(picture, spec, palette, settings with { Blood = 0f }), palette, 1, transparentBackground: true), toPaint);
+
+			// The player's own painted version of that sheet, if they saved one under this name, is used instead of the generated faces.
+			var painted = Path.Combine(folder, id + "-faces-painted.png");
+			var usedPainted = false;
+			if (File.Exists(painted))
+			{
+				try
+				{
+					var sheet = LoadPicture(painted);
+					lumps = FaceSheetImport.Read(sheet, spec, palette);
+					usedPainted = true;
+				}
+				catch (Exception e)
+				{
+					ModLog.Fail("face", "reading your painted face sheet (the generated faces are used instead)", e);
+				}
+			}
+
+			var preview = Path.Combine(folder, "face-sheet.png");
+			WriteSheet(FaceFactory.Sheet(lumps, palette, 6), preview);
 			var path = Path.Combine(folder, "face.wad");
 			File.WriteAllBytes(path, PwadWriter.Build(lumps));
-			WritePreview(lumps, palette, Path.Combine(folder, "face-sheet.png"));
 
-			ModLog.Info("face", $"made the {lumps.Count} faces of {character.Id.Entry} from a {picture.Width}x{picture.Height} picture (source {FaceTuning.Source}); a preview is in {Path.Combine(folder, "face-sheet.png")}");
+			ModLog.Info("face", $"{(usedPainted ? "using your painted faces for" : "made the faces of")} {character.Id.Entry} ({lumps.Count} faces, from a {picture.Width}x{picture.Height} picture, source {FaceTuning.Source}); " +
+				$"a preview is in {preview}; to paint your own, edit {toPaint} and save it as {painted}");
 			return path;
 		}
 		catch (Exception e)
@@ -81,10 +109,19 @@ internal static class PlayerFace
 			return null;
 		}
 
-		var image = texture.GetImage();
-		if (image == null || image.IsEmpty())
+		var picture = ToPixels(texture.GetImage());
+		if (picture == null)
 		{
 			ModLog.OnceInfo("face", "empty-image", "the character's picture could not be read, so Doomguy's own face is used");
+		}
+		return picture;
+	}
+
+	/// <summary>A picture as plain pixels (R, G, B, A each). Null if it is empty.</summary>
+	private static Rgba? ToPixels(Image? image)
+	{
+		if (image == null || image.IsEmpty())
+		{
 			return null;
 		}
 		if (image.IsCompressed())
@@ -95,17 +132,22 @@ internal static class PlayerFace
 		return new Rgba(image.GetWidth(), image.GetHeight(), image.GetData());
 	}
 
-	/// <summary>A picture of all 42 faces next to the add-on WAD, for a person to look at and decide what to tune. Failing to write it is not a problem.</summary>
-	private static void WritePreview(System.Collections.Generic.IReadOnlyList<(string Name, byte[] Data)> lumps, DoomPalette palette, string path)
+	/// <summary>A picture file of the player's, as plain pixels. Throws if it cannot be read.</summary>
+	private static Rgba LoadPicture(string path)
+	{
+		return ToPixels(Image.LoadFromFile(path)) ?? throw new InvalidDataException($"{Path.GetFileName(path)} could not be read as a picture");
+	}
+
+	/// <summary>Saves a face sheet as a PNG. Failing to write it is not a problem for the game.</summary>
+	private static void WriteSheet(Rgba sheet, string path)
 	{
 		try
 		{
-			var sheet = FaceFactory.Sheet(lumps, palette, 6);
 			Image.CreateFromData(sheet.Width, sheet.Height, false, Image.Format.Rgba8, sheet.Data).SavePng(path);
 		}
 		catch (Exception e)
 		{
-			ModLog.Fail("face", "saving the face preview", e);
+			ModLog.Fail("face", "saving a face sheet", e);
 		}
 	}
 }

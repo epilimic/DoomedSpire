@@ -37,15 +37,18 @@ internal static class FaceTuning
 
 	[Tunable(Group, 0.01f, "How bright the face is. 1 = as the picture.", Min = 0.5, Max = 1.5)]
 	public static float Brightness = 1f;
+
+	[Tunable(Group, 0.05f, "How many blood marks the hurt faces get. 0 = none, 1 = normal, 2 = twice as many. (The sheet written for you to paint on never has any.)", Min = 0, Max = 3)]
+	public static float Blood = 1f;
 }
 
 /// <summary>The numbers the face factory works from (<see cref="FaceTuning"/>'s, or fixed ones in the tests).</summary>
-internal readonly record struct FaceSettings(float CropLeft, float CropTop, float CropWidth, float CropHeight, float Damage, float Brightness)
+internal readonly record struct FaceSettings(float CropLeft, float CropTop, float CropWidth, float CropHeight, float Damage, float Brightness, float Blood = 1f)
 {
-	public static FaceSettings Default => new(0f, 0f, 1f, 1f, 1f, 1f);
+	public static FaceSettings Default => new(0f, 0f, 1f, 1f, 1f, 1f, 1f);
 
 	public static FaceSettings FromTuning() =>
-		new(FaceTuning.CropLeft, FaceTuning.CropTop, FaceTuning.CropWidth, FaceTuning.CropHeight, FaceTuning.Damage, FaceTuning.Brightness);
+		new(FaceTuning.CropLeft, FaceTuning.CropTop, FaceTuning.CropWidth, FaceTuning.CropHeight, FaceTuning.Damage, FaceTuning.Brightness, FaceTuning.Blood);
 }
 
 /// <summary>The size of one picture in the game data and where its corner sits (read from the original face, so a replacement fits exactly).</summary>
@@ -299,7 +302,7 @@ internal static class FaceFactory
 		}
 
 		// blood marks: the same places at the same health level, whatever the expression, so the wounds stay put as the face changes
-		DrawBlood(image, (int)Math.Round(2.2f * hurt) + extraBlood, seed: (uint)(pain * 7919 + 17));
+		DrawBlood(image, (int)Math.Round((2.2f * hurt + extraBlood) * Math.Max(0f, settings.Blood)), seed: (uint)(pain * 7919 + 17));
 
 		if (kind == FaceKind.Dead)
 		{
@@ -368,13 +371,37 @@ internal static class FaceFactory
 		}
 	}
 
-	// ---------------------------------------------------------------- looking at the result
+	// ---------------------------------------------------------------- the face sheet (for looking at, and for painting on)
 
 	/// <summary>
-	/// A contact sheet of the finished faces, decoded back from their patches the way the engine reads them: one row per health level (three straight looks,
-	/// turn right, turn left, ouch, evil grin, rampage), and a last row with god mode and dead. For a person to look at.
+	/// The grid of the face sheet: one row per health level, left to right: three straight looks, turn right, turn left, ouch, evil grin, rampage; and a last
+	/// row with god mode and dead. The same grid is used to write a sheet and to read an edited one back (<see cref="FaceSheetImport"/>).
 	/// </summary>
-	public static Rgba Sheet(IReadOnlyList<(string Name, byte[] Data)> lumps, DoomPalette palette, int scale)
+	public static IReadOnlyList<IReadOnlyList<string>> SheetRows { get; } = ListSheetRows();
+
+	public const int SheetColumns = 8;
+	/// <summary>Each cell is this many pixels wide and tall at 1 pixel per DOOM pixel. Every face is drawn relative to the same point in its cell, so faces line up.</summary>
+	public const int SheetCellWidth = 34;
+	public const int SheetCellHeight = 35;
+	/// <summary>The empty border around the whole sheet, in pixels (not scaled).</summary>
+	public const int SheetMargin = 4;
+
+	private static List<IReadOnlyList<string>> ListSheetRows()
+	{
+		var rows = new List<IReadOnlyList<string>>();
+		for (var i = 0; i < PainLevels; i++)
+		{
+			rows.Add(new[] { "STFST" + i + "0", "STFST" + i + "1", "STFST" + i + "2", "STFTR" + i + "0", "STFTL" + i + "0", "STFOUCH" + i, "STFEVL" + i, "STFKILL" + i });
+		}
+		rows.Add(new[] { "STFGOD0", "STFDEAD0" });
+		return rows;
+	}
+
+	/// <summary>
+	/// A sheet of the finished faces, decoded back from their patches the way the engine reads them, laid out as <see cref="SheetRows"/>. For a person to look
+	/// at (<paramref name="scale"/> 6 on a dark background) or to paint on (scale 1 on a transparent background: one picture pixel per DOOM pixel).
+	/// </summary>
+	public static Rgba Sheet(IReadOnlyList<(string Name, byte[] Data)> lumps, DoomPalette palette, int scale, bool transparentBackground = false)
 	{
 		var byName = new Dictionary<string, byte[]>();
 		foreach (var (name, lumpData) in lumps)
@@ -382,29 +409,24 @@ internal static class FaceFactory
 			byName[name] = lumpData;
 		}
 
-		var cells = new List<List<string>>();
-		for (var i = 0; i < PainLevels; i++)
-		{
-			cells.Add(new List<string> { "STFST" + i + "0", "STFST" + i + "1", "STFST" + i + "2", "STFTR" + i + "0", "STFTL" + i + "0", "STFOUCH" + i, "STFEVL" + i, "STFKILL" + i });
-		}
-		cells.Add(new List<string> { "STFGOD0", "STFDEAD0" });
-
-		// every face is drawn relative to the same point, so the cell is big enough for the widest and tallest (up to 32 x 33 around that point)
-		var cellW = 34 * scale;
-		var cellH = 35 * scale;
-		var width = cellW * 8 + 8;
-		var height = cellH * cells.Count + 8;
+		var cellW = SheetCellWidth * scale;
+		var cellH = SheetCellHeight * scale;
+		var width = cellW * SheetColumns + 2 * SheetMargin;
+		var height = cellH * SheetRows.Count + 2 * SheetMargin;
 		var data = new byte[width * height * 4];
-		for (var i = 0; i < data.Length; i += 4)
+		if (!transparentBackground)
 		{
-			data[i] = 40; data[i + 1] = 40; data[i + 2] = 44; data[i + 3] = 255;
+			for (var i = 0; i < data.Length; i += 4)
+			{
+				data[i] = 40; data[i + 1] = 40; data[i + 2] = 44; data[i + 3] = 255;
+			}
 		}
 
-		for (var row = 0; row < cells.Count; row++)
+		for (var row = 0; row < SheetRows.Count; row++)
 		{
-			for (var col = 0; col < cells[row].Count; col++)
+			for (var col = 0; col < SheetRows[row].Count; col++)
 			{
-				var patch = Patch.FromData(cells[row][col], byName[cells[row][col]]);
+				var patch = Patch.FromData(SheetRows[row][col], byName[SheetRows[row][col]]);
 				for (var x = 0; x < patch.Width; x++)
 				{
 					foreach (var post in patch.Columns[x])
@@ -418,10 +440,10 @@ internal static class FaceFactory
 							{
 								for (var sx = 0; sx < scale; sx++)
 								{
-									var ox = 4 + col * cellW + u * scale + sx;
-									var oy = 4 + row * cellH + v * scale + sy;
+									var ox = SheetMargin + col * cellW + u * scale + sx;
+									var oy = SheetMargin + row * cellH + v * scale + sy;
 									var o = 4 * (oy * width + ox);
-									data[o] = (byte)r; data[o + 1] = (byte)g; data[o + 2] = (byte)b;
+									data[o] = (byte)r; data[o + 1] = (byte)g; data[o + 2] = (byte)b; data[o + 3] = 255;
 								}
 							}
 						}
@@ -430,5 +452,68 @@ internal static class FaceFactory
 			}
 		}
 		return new Rgba(width, height, data);
+	}
+}
+
+/// <summary>
+/// Reads a face sheet (as written by <see cref="FaceFactory.Sheet"/>, possibly painted over by a person) back into the 42 face lumps, so hand-made faces can
+/// replace the generated ones. The sheet may be at any whole-number scale (1 picture pixel per DOOM pixel, or 6, ...); each DOOM pixel is read from the middle of
+/// its block. Transparent pixels stay transparent; every other colour is matched to the nearest of DOOM's 256.
+/// </summary>
+internal static class FaceSheetImport
+{
+	public static IReadOnlyList<(string Name, byte[] Data)> Read(Rgba sheet, Func<string, PatchSpec> spec, DoomPalette palette)
+	{
+		var rows = FaceFactory.SheetRows;
+		var gridWidth = FaceFactory.SheetCellWidth * FaceFactory.SheetColumns;
+		var innerWidth = sheet.Width - 2 * FaceFactory.SheetMargin;
+		if (innerWidth <= 0 || innerWidth % gridWidth != 0)
+		{
+			throw new FormatException($"the sheet is {sheet.Width} pixels wide; it must be {gridWidth} x a whole number + {2 * FaceFactory.SheetMargin} (for example {gridWidth + 2 * FaceFactory.SheetMargin} at 1 pixel per face pixel). Save it at its original size, or enlarged by a whole number.");
+		}
+		var scale = innerWidth / gridWidth;
+		var expectedHeight = FaceFactory.SheetCellHeight * scale * rows.Count + 2 * FaceFactory.SheetMargin;
+		if (sheet.Height != expectedHeight)
+		{
+			throw new FormatException($"the sheet is {sheet.Height} pixels tall but at that width it must be {expectedHeight}");
+		}
+
+		var cellW = FaceFactory.SheetCellWidth * scale;
+		var cellH = FaceFactory.SheetCellHeight * scale;
+		var byName = new Dictionary<string, byte[]>();
+		for (var row = 0; row < rows.Count; row++)
+		{
+			for (var col = 0; col < rows[row].Count; col++)
+			{
+				var name = rows[row][col];
+				var s = spec(name);
+				var pixels = new int[s.Width * s.Height];
+				for (var py = 0; py < s.Height; py++)
+				{
+					for (var px = 0; px < s.Width; px++)
+					{
+						var u = px - s.Left;
+						var v = py - s.Top;
+						var x = FaceFactory.SheetMargin + col * cellW + u * scale + scale / 2;
+						var y = FaceFactory.SheetMargin + row * cellH + v * scale + scale / 2;
+						if (u < 0 || v < 0 || u >= FaceFactory.SheetCellWidth || v >= FaceFactory.SheetCellHeight)
+						{
+							pixels[py * s.Width + px] = -1;
+							continue;
+						}
+						var o = 4 * (y * sheet.Width + x);
+						pixels[py * s.Width + px] = sheet.Data[o + 3] < 128 ? -1 : palette.Nearest(sheet.Data[o], sheet.Data[o + 1], sheet.Data[o + 2]);
+					}
+				}
+				byName[name] = DoomPatch.Encode(s.Width, s.Height, s.Left, s.Top, pixels);
+			}
+		}
+
+		var lumps = new List<(string, byte[])>();
+		foreach (var (name, _, _) in FaceFactory.Faces)
+		{
+			lumps.Add((name, byName[name]));
+		}
+		return lumps;
 	}
 }

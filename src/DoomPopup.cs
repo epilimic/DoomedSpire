@@ -100,27 +100,114 @@ internal static class DoomPopup
 		ModLog.Info("map", "DOOM button added to the map screen");
 	}
 
-	/// <summary>Bottom right, next to the map's Share button (map_screen.tscn: ShareButton is at -220..-48 by -112..-48 from the bottom right corner).</summary>
-	private static Button BuildButton()
+	/// <summary>
+	/// The game's own blank button plate (the one under the Share button's label and icon: map_screen's ShareButton, scenes/ui/share_button.tscn, texture
+	/// images/packed/statistics_screen/share_button.png), tinted and shadowed the way the Share button does it, with the DOOM logo (assets/doom_button.png)
+	/// on top. Sits just above the Share button, the same width and lined up with it: the Share button is at -220..-48 by -112..-48 from the bottom right
+	/// corner of the map screen (map_screen.tscn), so this one is 8 pixels above it.
+	/// </summary>
+	private static TextureButton BuildButton()
 	{
-		var button = new Button
+		const float width = 172f;
+		const float height = 64f;
+		var plate = LoadGamePlate();
+
+		var button = new TextureButton
 		{
 			Name = ButtonName,
-			Text = "DOOM",
+			TextureNormal = plate,
+			IgnoreTextureSize = true,
+			StretchMode = TextureButton.StretchModeEnum.Scale,
+			SelfModulate = PlateColour,
 			FocusMode = Control.FocusModeEnum.None, // controller support comes later; this keeps it out of the map's focus handling
-			CustomMinimumSize = new Vector2(172, 64),
+			CustomMinimumSize = new Vector2(width, height),
+			PivotOffset = new Vector2(width / 2, height / 2),
 			AnchorLeft = 1f,
 			AnchorTop = 1f,
 			AnchorRight = 1f,
 			AnchorBottom = 1f,
-			OffsetLeft = -420f,
-			OffsetTop = -112f,
-			OffsetRight = -232f,
-			OffsetBottom = -48f,
+			OffsetLeft = -48f - width,
+			OffsetTop = -112f - 8f - height,
+			OffsetRight = -48f,
+			OffsetBottom = -112f - 8f,
 			GrowHorizontal = Control.GrowDirection.Begin,
 			GrowVertical = Control.GrowDirection.Begin,
 		};
+
+		// The soft shadow the Share button has: the same plate, black at half strength, 6 pixels right and 4 down, drawn behind.
+		var shadow = new TextureRect
+		{
+			Texture = plate,
+			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+			StretchMode = TextureRect.StretchModeEnum.Scale,
+			Modulate = new Color(0f, 0f, 0f, 0.5f),
+			ShowBehindParent = true,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+		};
+		shadow.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+		shadow.OffsetLeft = 6f;
+		shadow.OffsetTop = 4f;
+		shadow.OffsetRight = 6f;
+		shadow.OffsetBottom = 4f;
+		button.AddChild(shadow);
+
+		var logoPicture = EmbeddedArt.Get("doom_button.png");
+		Control logo;
+		if (logoPicture != null)
+		{
+			logo = new TextureRect
+			{
+				Texture = logoPicture,
+				ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+				StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+				MouseFilter = Control.MouseFilterEnum.Ignore,
+			};
+		}
+		else
+		{
+			ModLog.OnceInfo("map", "no-logo", "the DOOM logo (doom_button.png) could not be loaded from the dll; the button says DOOM instead");
+			logo = new Label
+			{
+				Text = "DOOM",
+				HorizontalAlignment = HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Center,
+				MouseFilter = Control.MouseFilterEnum.Ignore,
+			};
+		}
+		logo.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect, Control.LayoutPresetMode.Minsize, 7); // the logo fits inside the plate with a margin, keeping its shape
+		button.AddChild(logo);
+
+		// A little life, like the game's buttons: brighter and slightly bigger under the mouse, pressed in while held.
+		button.MouseEntered += () => ModLog.Try("map", "button hover", () => { button.Scale = new Vector2(1.04f, 1.04f); button.SelfModulate = PlateHoverColour; logo.Modulate = new Color(1.15f, 1.15f, 1.15f, 1f); });
+		button.MouseExited += () => ModLog.Try("map", "button hover end", () => { button.Scale = Vector2.One; button.SelfModulate = PlateColour; logo.Modulate = Colors.White; });
+		button.ButtonDown += () => ModLog.Try("map", "button press", () => { button.Scale = new Vector2(0.97f, 0.97f); });
+		button.ButtonUp += () => ModLog.Try("map", "button release", () => { button.Scale = button.IsHovered() ? new Vector2(1.04f, 1.04f) : Vector2.One; });
 		return button;
+	}
+
+	/// <summary>The Share button's plate: black at three quarters (share_button.tscn, ButtonImage modulate 0,0,0,0.753).</summary>
+	private static readonly Color PlateColour = new Color(0f, 0f, 0f, 0.7529412f);
+	private static readonly Color PlateHoverColour = new Color(0.14f, 0.1f, 0.08f, 0.86f);
+
+	/// <summary>The game's blank button plate. If it cannot be loaded (the game moved it), a plain white square stands in; tinted black it is a dark rectangle.</summary>
+	private static Texture2D LoadGamePlate()
+	{
+		const string path = "res://images/packed/statistics_screen/share_button.png";
+		try
+		{
+			if (ResourceLoader.Exists(path) && ResourceLoader.Load<Texture2D>(path) is { } texture)
+			{
+				return texture;
+			}
+			ModLog.OnceInfo("map", "no-plate", $"the game's button plate {path} was not found; a plain dark rectangle is used");
+		}
+		catch (Exception e)
+		{
+			ModLog.Fail("map", "loading the game's button plate", e);
+		}
+		var image = Image.CreateEmpty(8, 8, false, Image.Format.Rgba8);
+		image.Fill(Colors.White);
+		return ImageTexture.CreateFromImage(image);
 	}
 
 	/// <summary>

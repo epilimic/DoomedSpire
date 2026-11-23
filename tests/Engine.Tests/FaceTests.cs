@@ -318,7 +318,7 @@ namespace ManagedDoomTest
         public void TheTunerCanFindTheFaceNumbers()
         {
             var fields = typeof(FaceTuning).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly);
-            Assert.AreEqual(8, fields.Length);
+            Assert.AreEqual(9, fields.Length);
             foreach (var field in fields)
             {
                 Assert.IsFalse(field.IsInitOnly || field.IsLiteral, field.Name);
@@ -329,6 +329,116 @@ namespace ManagedDoomTest
                 Assert.IsFalse(string.IsNullOrEmpty(attribute.GetType().GetProperty("Tip").GetValue(attribute) as string), field.Name + " has a tip");
             }
             Assert.AreEqual(FaceSettings.Default, FaceSettings.FromTuning(), "the defaults are the plain settings");
+        }
+
+        // --- the blood knob, and painting on a sheet (piece: faces, second round) ---
+
+        /// <summary>The colour of each pixel of a face, null where transparent.</summary>
+        private static (int R, int G, int B)?[] Colours(byte[] lump, DoomPalette palette) =>
+            Decode(lump).Select(i => i < 0 ? ((int, int, int)?)null : palette.Colour(i)).ToArray();
+
+        private static (IReadOnlyList<(string Name, byte[] Data)> Faces, DoomPalette Palette, Func<string, PatchSpec> Spec, Wad Wad) Setup(FaceSettings settings)
+        {
+            var wad = new Wad(WadPath.Doom1Shareware);
+            var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
+            Func<string, PatchSpec> spec = name => { var p = Patch.FromWad(wad, name); return new PatchSpec(p.Width, p.Height, p.LeftOffset, p.TopOffset); };
+            return (FaceFactory.Build(Portrait(), spec, palette, settings), palette, spec, wad);
+        }
+
+        /// <summary>How many pixels of a face differ between two builds: with only the blood setting changed, those are the blood marks.</summary>
+        private static int Differences(byte[] a, byte[] b, DoomPalette palette) =>
+            Colours(a, palette).Zip(Colours(b, palette), (x, y) => x != y).Count(d => d);
+
+        [TestMethod]
+        public void TheBloodSettingControlsTheMarksAndZeroMeansNone()
+        {
+            var (none, palette, _, wad1) = Setup(FaceSettings.Default with { Blood = 0f });
+            var (normal, _, _, wad2) = Setup(FaceSettings.Default);
+            var (lots, _, _, wad3) = Setup(FaceSettings.Default with { Blood = 2f });
+            using (wad1) using (wad2) using (wad3)
+            {
+                // at full health there are no marks to switch off, so the faces are the same
+                Assert.AreEqual(0, Differences(Lump(none, "STFST00"), Lump(normal, "STFST00"), palette), "no blood at full health either way");
+                // at every worse level the marks are exactly what differs
+                var marks = Enumerable.Range(1, 4).Select(i => Differences(Lump(none, "STFST" + i + "0"), Lump(normal, "STFST" + i + "0"), palette)).ToArray();
+                Assert.IsTrue(marks.All(m => m > 0), "every worse level gets some marks: " + string.Join(",", marks));
+                Assert.IsTrue(marks[3] > marks[0], "and the worst level has more than the first: " + string.Join(",", marks));
+                Assert.IsTrue(marks[3] < 60, "a handful of pixels, not a wash: " + marks[3]);
+                var twice = Differences(Lump(none, "STFST40"), Lump(lots, "STFST40"), palette);
+                Assert.IsTrue(twice > marks[3], $"twice the setting gives more marks ({marks[3]} then {twice})");
+                Assert.IsTrue(Differences(Lump(none, "STFDEAD0"), Lump(normal, "STFDEAD0"), palette) > 5, "the dead face has marks that switch off too");
+            }
+        }
+
+        [TestMethod]
+        public void AFaceSheetReadsBackIntoTheSameFacesAtAnyWholeNumberScale()
+        {
+            var (faces, palette, spec, wad) = Setup(FaceSettings.Default);
+            using (wad)
+            {
+                foreach (var scale in new[] { 1, 3 })
+                {
+                    var sheet = FaceFactory.Sheet(faces, palette, scale, transparentBackground: true);
+                    Assert.AreEqual(34 * 8 * scale + 8, sheet.Width);
+                    var back = FaceSheetImport.Read(sheet, spec, palette);
+                    Assert.AreEqual(42, back.Count);
+                    foreach (var (name, data) in faces)
+                    {
+                        var a = Colours(data, palette);
+                        var b = Colours(back.First(l => l.Name == name).Data, palette);
+                        Assert.IsTrue(a.SequenceEqual(b), $"{name} comes back the same at scale {scale}");
+                    }
+                }
+            }
+        }
+
+        [TestMethod]
+        public void PaintingOnASheetChangesOnlyThatFace()
+        {
+            var (faces, palette, spec, wad) = Setup(FaceSettings.Default with { Blood = 0f });
+            using (wad)
+            {
+                var sheet = FaceFactory.Sheet(faces, palette, 1, transparentBackground: true);
+                // paint one pixel in the middle of the worst-health straight face (row 4, column 0): a bright blue no face has
+                var s = spec("STFST40");
+                int px = s.Width / 2, py = s.Height / 2;
+                int u = px - s.Left, v = py - s.Top;
+                var o = 4 * ((FaceFactory.SheetMargin + 4 * FaceFactory.SheetCellHeight + v) * sheet.Width + FaceFactory.SheetMargin + 0 * FaceFactory.SheetCellWidth + u);
+                var painted = (byte[])sheet.Data.Clone();
+                painted[o] = 0; painted[o + 1] = 0; painted[o + 2] = 255; painted[o + 3] = 255;
+
+                var back = FaceSheetImport.Read(new Rgba(sheet.Width, sheet.Height, painted), spec, palette);
+                var original = Colours(Lump(faces, "STFST40"), palette);
+                var edited = Colours(Lump(back, "STFST40"), palette);
+                var changed = Enumerable.Range(0, original.Length).Where(i => original[i] != edited[i]).ToArray();
+                Assert.AreEqual(1, changed.Length, "exactly one pixel changed");
+                Assert.AreEqual(py * s.Width + px, changed[0]);
+                Assert.IsTrue(edited[changed[0]] is { } c && c.B > 150 && c.R < 80, "and it is blue");
+                foreach (var (name, data) in faces.Where(f => f.Name != "STFST40"))
+                {
+                    Assert.IsTrue(Colours(data, palette).SequenceEqual(Colours(Lump(back, name), palette)), name + " is untouched");
+                }
+
+                // rubbing a pixel out makes it transparent
+                var erased = (byte[])sheet.Data.Clone();
+                erased[o + 3] = 0;
+                var gone = Colours(Lump(FaceSheetImport.Read(new Rgba(sheet.Width, sheet.Height, erased), spec, palette), "STFST40"), palette);
+                Assert.IsTrue(gone[py * s.Width + px] == null, "a transparent pixel on the sheet is transparent in the face");
+            }
+        }
+
+        [TestMethod]
+        public void ASheetOfTheWrongSizeIsRefusedWithAClearMessage()
+        {
+            var (faces, palette, spec, wad) = Setup(FaceSettings.Default);
+            using (wad)
+            {
+                var sheet = FaceFactory.Sheet(faces, palette, 1, transparentBackground: true);
+                var cropped = new Rgba(sheet.Width - 5, sheet.Height, new byte[(sheet.Width - 5) * sheet.Height * 4]);
+                var message = "";
+                try { FaceSheetImport.Read(cropped, spec, palette); } catch (FormatException e) { message = e.Message; }
+                Assert.IsTrue(message.Contains("wide") && message.Contains(sheet.Width.ToString()) || message.Contains("must be"), "the message says what size it should be: " + message);
+            }
         }
     }
 }
