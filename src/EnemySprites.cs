@@ -25,13 +25,13 @@ internal static class EnemySprites
 	/// The enemy that takes the place of each DOOM monster. To try another enemy, change the class here.
 	/// <b>Some of these are swapped for now</b>, so that the enemies the owner wants to look at come up in the first levels instead of the last, and each place
 	/// goes back to its "final" enemy (the one in the comment on its line) once the owner has seen them: the baron has the zombieman's enemy and the cacodemon the
-	/// shotgun guy's; the shotgun guy has the imp's; the lost soul has the baron's (SkulkingColony); the zombieman has the cyberdemon's (KnowledgeDemon, to see its
-	/// attack poses) and the cyberdemon the lost soul's (TheLost); the imp has the Sewer Clam again, for its log line, whose jump before its attack the owner is
-	/// looking into. Last comes Entomancer, the other candidate for the cyberdemon.
+	/// shotgun guy's; the shotgun guy has the imp's; the lost soul has the baron's (SkulkingColony); the cyberdemon has the lost soul's (TheLost); the zombieman has
+	/// Entomancer, one of the two candidates for the cyberdemon (the other is KnowledgeDemon, which the owner has seen and is not in the list for now); the imp has
+	/// the Sewer Clam, to see its attack with the jump taken out. The owner then picks the cyberdemon's enemy, and the rest go back.
 	/// </summary>
 	private static readonly (MobjType Monster, Func<MonsterModel> Enemy)[] Replacements =
 	{
-		(MobjType.Possessed, () => ModelDb.Monster<Monsters.KnowledgeDemon>()), // zombieman (final: ThievingHopper)
+		(MobjType.Possessed, () => ModelDb.Monster<Monsters.Entomancer>()),     // zombieman (final: ThievingHopper)
 		(MobjType.Shotguy, () => ModelDb.Monster<Monsters.Exoskeleton>()),      // shotgun guy (final: Fogmog)
 		(MobjType.Troop, () => ModelDb.Monster<Monsters.SewerClam>()),          // imp (final: Exoskeleton)
 		(MobjType.Sergeant, () => ModelDb.Monster<Monsters.Axebot>()),          // demon (and the spectre)
