@@ -18,10 +18,11 @@ namespace DoomedSpire;
 ///
 /// Keys: every key goes to DOOM except Esc, which leaves DOOM and drops back to the map screen (it leaves on release, so both halves of the key stay in DOOM). The backtick key is DOOM's own Esc (its menu). Nothing reaches the game: the picture area accepts
 /// every key event (stopping the game's _UnhandledInput hotkeys), and KeyLock (src/KeyLock.cs) stops the handlers that read keys before the GUI.
-/// Mouse: never captured, the cursor moves freely, and it works as if DOOM were fullscreen. While DOOM runs, ANY sideways movement of the cursor,
-/// wherever it is on the screen, turns the player (read from the cursor's position every frame), and left click fires and right click uses from
-/// anywhere on the screen: the popup covers the whole screen on its own canvas layer, so nothing else in the game can be clicked (DoomPopup).
-/// The mouse never walks the player (WASD does).
+/// Mouse: while DOOM runs the mouse is captured (Input.MouseMode Captured): it is locked to the game window, so it can never wander onto another
+/// monitor, its cursor is hidden, and it gives unlimited relative movement, so turning never stops at a screen edge. Any sideways movement turns
+/// the player (read from the window's own input signal, not from a control, so it counts wherever the "cursor" is). Left click fires and right click
+/// uses from anywhere: the popup covers the whole screen on its own canvas layer, so nothing else in the game can be clicked (DoomPopup).
+/// The mouse never walks the player (WASD does). The previous mouse mode is put back whenever DOOM ends, whichever way it ends.
 /// </summary>
 internal sealed class DoomView
 {
@@ -47,7 +48,9 @@ internal sealed class DoomView
 	private long lastTimestamp;
 	private double accumulator;
 	private bool windowWasUnfocused;
-	private float lastMouseX;
+	private Window? inputWindow;
+	private Input.MouseModeEnum mouseModeBefore;
+	private bool mouseCaptured;
 	private bool escapeWasDown;
 	private int failures;
 
@@ -122,12 +125,14 @@ internal sealed class DoomView
 			failures = 0;
 			accumulator = 0;
 			windowWasUnfocused = false;
-			lastMouseX = screen.GetViewport().GetMousePosition().X;
 			escapeWasDown = false;
 			lastTimestamp = Stopwatch.GetTimestamp();
 			tree = screen.GetTree();
 			frameHandler = OnFrame;
 			tree.ProcessFrame += frameHandler;
+			inputWindow = tree.Root;
+			inputWindow.WindowInput += OnWindowInput;
+			CaptureMouse();
 			screen.GrabFocus();
 			KeyLock.Active = true;
 			closeButton.Visible = false;
@@ -153,6 +158,12 @@ internal sealed class DoomView
 			frameHandler = null;
 			tree = null;
 
+			if (inputWindow != null && GodotObject.IsInstanceValid(inputWindow))
+			{
+				inputWindow.WindowInput -= OnWindowInput;
+			}
+			inputWindow = null;
+
 			session?.ReleaseAllInput();
 			session?.Dispose();
 		}
@@ -162,6 +173,7 @@ internal sealed class DoomView
 		}
 		finally
 		{
+			ReleaseMouse();
 			KeyLock.Active = false;
 			if (GodotObject.IsInstanceValid(closeButton))
 			{
@@ -202,10 +214,20 @@ internal sealed class DoomView
 					windowWasUnfocused = true;
 				}
 				lastTimestamp = Stopwatch.GetTimestamp();
-				lastMouseX = screen.GetViewport().GetMousePosition().X;
+				if (Input.MouseMode == Input.MouseModeEnum.Captured)
+				{
+					Input.MouseMode = Input.MouseModeEnum.Visible; // do not keep the mouse while the window is not in front
+				}
 				return;
 			}
 			windowWasUnfocused = false;
+
+			// Keep the mouse captured. The game sets the mouse mode itself whenever it shows or hides its cursor (NCursorManager.RefreshCursorShown),
+			// which would undo it, so it is put back every frame.
+			if (Input.MouseMode != Input.MouseModeEnum.Captured)
+			{
+				Input.MouseMode = Input.MouseModeEnum.Captured;
+			}
 
 			// Esc leaves DOOM, on release. Read from the keyboard state itself every frame rather than from key events, so the way out never depends on
 			// keyboard focus or event delivery: the Close button is hidden while a game runs and every other key is locked, so Esc must always work.
@@ -217,12 +239,6 @@ internal sealed class DoomView
 				return;
 			}
 			escapeWasDown = escapeDown;
-
-			// The mouse turns the player wherever the cursor is: how far it moved sideways since the last frame. (Read here, not from mouse events,
-			// because events only come to the control under the cursor.)
-			var mouseX = screen.GetViewport().GetMousePosition().X;
-			current.AddMouseTurn(mouseX - lastMouseX);
-			lastMouseX = mouseX;
 
 			var now = Stopwatch.GetTimestamp();
 			var elapsed = (double)(now - lastTimestamp) / Stopwatch.Frequency;
@@ -316,6 +332,52 @@ internal sealed class DoomView
 		catch (Exception e)
 		{
 			ModLog.Fail("input", "handling an input event", e);
+		}
+	}
+
+	/// <summary>Every event the game window receives, before anything else sees it. Only the mouse's sideways movement is used here: it turns the player.</summary>
+	private void OnWindowInput(InputEvent inputEvent)
+	{
+		try
+		{
+			if (inputEvent is InputEventMouseMotion motion)
+			{
+				session?.AddMouseTurn(motion.Relative.X);
+			}
+		}
+		catch (Exception e)
+		{
+			ModLog.Fail("input", "reading mouse movement", e);
+		}
+	}
+
+	private void CaptureMouse()
+	{
+		if (!mouseCaptured)
+		{
+			mouseModeBefore = Input.MouseMode;
+			mouseCaptured = true;
+		}
+		Input.MouseMode = Input.MouseModeEnum.Captured;
+	}
+
+	/// <summary>Puts the mouse back the way it was, if it is still ours. Safe to call any number of times.</summary>
+	private void ReleaseMouse()
+	{
+		try
+		{
+			if (mouseCaptured)
+			{
+				mouseCaptured = false;
+				if (Input.MouseMode == Input.MouseModeEnum.Captured || Input.MouseMode == Input.MouseModeEnum.Visible)
+				{
+					Input.MouseMode = mouseModeBefore == Input.MouseModeEnum.Captured ? Input.MouseModeEnum.Visible : mouseModeBefore;
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			ModLog.Fail("input", "giving the mouse back", e);
 		}
 	}
 
