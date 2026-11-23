@@ -23,22 +23,22 @@ internal static class EnemySprites
 {
 	/// <summary>
 	/// The enemy that takes the place of each DOOM monster. To try another enemy, change the class here.
-	/// <b>Some of these are swapped for now</b>, so that the enemies the owner wants to look at come up in the first levels instead of the last: the baron has the
-	/// zombieman's enemy (ThievingHopper) and the zombieman has the baron's (SkulkingColony); the cacodemon has the shotgun guy's (Fogmog); the imp has the
-	/// cacodemon's (SewerClam) and the shotgun guy has the imp's (Exoskeleton). Next the lost soul's and the spider mastermind's enemies (TheLost, Fabricator)
-	/// take those places, then the cyberdemon's (KnowledgeDemon, with Entomancer as the other candidate); then it all goes back to the lines marked "final".
+	/// <b>Some of these are swapped for now</b>, so that the enemies the owner wants to look at come up in the first levels instead of the last, and each pair of
+	/// places is swapped back to its "final" enemy (the one in the comment on its line) once the owner has seen them: the baron has the zombieman's enemy and the
+	/// cacodemon the shotgun guy's; the shotgun guy has the imp's; the zombieman has the lost soul's, the imp the spider mastermind's, the lost soul the baron's
+	/// (SkulkingColony) and the spider mastermind the cacodemon's (SewerClam). Last come the cyberdemon's KnowledgeDemon and Entomancer.
 	/// </summary>
 	private static readonly (MobjType Monster, Func<MonsterModel> Enemy)[] Replacements =
 	{
-		(MobjType.Possessed, () => ModelDb.Monster<Monsters.SkulkingColony>()), // zombieman (final: ThievingHopper)
+		(MobjType.Possessed, () => ModelDb.Monster<Monsters.TheLost>()),        // zombieman (final: ThievingHopper)
 		(MobjType.Shotguy, () => ModelDb.Monster<Monsters.Exoskeleton>()),      // shotgun guy (final: Fogmog)
-		(MobjType.Troop, () => ModelDb.Monster<Monsters.SewerClam>()),          // imp (final: Exoskeleton)
+		(MobjType.Troop, () => ModelDb.Monster<Monsters.Fabricator>()),         // imp (final: Exoskeleton)
 		(MobjType.Sergeant, () => ModelDb.Monster<Monsters.Axebot>()),          // demon (and the spectre)
 		(MobjType.Bruiser, () => ModelDb.Monster<Monsters.ThievingHopper>()),   // baron of hell (final: SkulkingColony)
-		(MobjType.Skull, () => ModelDb.Monster<Monsters.TheLost>()),            // lost soul
+		(MobjType.Skull, () => ModelDb.Monster<Monsters.SkulkingColony>()),     // lost soul (final: TheLost)
 		(MobjType.Head, () => ModelDb.Monster<Monsters.Fogmog>()),              // cacodemon (final: SewerClam)
 		(MobjType.Cyborg, () => ModelDb.Monster<Monsters.KnowledgeDemon>()),    // cyberdemon (the other candidate is Entomancer)
-		(MobjType.Spider, () => ModelDb.Monster<Monsters.Fabricator>()),        // spider mastermind
+		(MobjType.Spider, () => ModelDb.Monster<Monsters.SewerClam>()),         // spider mastermind (final: Fabricator)
 	};
 
 	/// <summary>After this long the rest of the enemies are not drawn: the game starts with what there is (the rest keep DOOM's own pictures).</summary>
@@ -124,6 +124,17 @@ internal static class EnemySprites
 					ModLog.Info("enemy", $"{monster.Id.Entry} could not be drawn for the {sprite} ({type}), so it keeps DOOM's own picture (the lines above say why)");
 					complete = false;
 					continue;
+				}
+				// One line saying how each pose compares with the first (the standing one), so a pose that jumps about (hops, lunges) shows up in the log:
+				// width and height as a percentage of the first pose's height, "up" how far its bottom is above the standing point, "x" how far its middle is to the right.
+				if (frames.TryGetValue(letters[0], out var first))
+				{
+					var measured = replaced.Select(f =>
+					{
+						var m = frames.TryGetValue(f.Letter, out var pose) ? MonsterSpriteBuilder.Measure(pose, first) : null;
+						return m == null ? $"{f.Letter}:none" : $"{f.Letter}({f.Role} {MonsterSprites.Request(f).Fraction:0.00}) {m.Value.Width}x{m.Value.Height}% up{m.Value.Lift}% x{m.Value.Shift}%";
+					});
+					ModLog.Info("enemy", $"{monster.Id.Entry} poses: {string.Join(" | ", measured)}");
 				}
 				var built = MonsterSpriteBuilder.Build(sprite, keptLetters, frames, letters[0], height, palette);
 				lumps.AddRange(built);

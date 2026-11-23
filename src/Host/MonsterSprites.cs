@@ -312,6 +312,23 @@ internal static class MonsterSpriteBuilder
 		return lumps;
 	}
 
+	/// <summary>
+	/// How a captured pose compares with another, for finding poses that jump about: its size and where it stands, as whole percentages of the reference
+	/// pose's height. <c>Lift</c> is how far its bottom is above the standing point (negative: below it), <c>Shift</c> how far its middle is to the right of it.
+	/// Null if the picture is empty.
+	/// </summary>
+	public static (int Width, int Height, int Lift, int Shift)? Measure(CapturedFrame frame, CapturedFrame reference)
+	{
+		var box = Edges(frame.Image);
+		var referenceBox = Edges(reference.Image);
+		if (box == null || referenceBox == null)
+		{
+			return null;
+		}
+		double Percent(double pixels) => Math.Round(100 * pixels / referenceBox.Value.Height);
+		return ((int)Percent(box.Value.Width), (int)Percent(box.Value.Height), (int)Percent(frame.OriginY - (box.Value.Top + box.Value.Height)), (int)Percent(box.Value.Left + box.Value.Width / 2.0 - frame.OriginX));
+	}
+
 	/// <summary>The lumps with the markers that tell the engine they are sprites (it only reads sprite pictures from between S_START and S_END).</summary>
 	public static IReadOnlyList<(string Name, byte[] Data)> WithMarkers(IReadOnlyList<(string Name, byte[] Data)> lumps)
 	{

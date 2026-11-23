@@ -96,6 +96,19 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void MeasuringAPoseSaysHowFarItIsLiftedAndOffCentre()
+        {
+            var stand = Blob(60, 100, 200);                      // 120 wide, 200 tall, standing on the point
+            var same = MonsterSpriteBuilder.Measure(stand, stand).Value;
+            Assert.AreEqual((60, 100, 0, 0), same, "the same pose against itself: 60% wide, 100% tall, not lifted, not off centre");
+            var lifted = new CapturedFrame(stand.Image, stand.OriginX, stand.OriginY + 40); // the standing point 40 pixels lower: the pose floats 40 above it
+            Assert.AreEqual(20, MonsterSpriteBuilder.Measure(lifted, stand).Value.Lift, "40 of 200 pixels is 20%, and above the point is positive");
+            var sunk = new CapturedFrame(stand.Image, stand.OriginX, stand.OriginY - 40);
+            Assert.AreEqual(-20, MonsterSpriteBuilder.Measure(sunk, stand).Value.Lift, "below it is negative");
+            Assert.IsTrue(MonsterSpriteBuilder.Measure(new CapturedFrame(new Rgba(10, 10, new byte[400]), 5, 5), stand) == null, "an empty picture has no measure");
+        }
+
+        [TestMethod]
         public void TheGameHasFourGibAnimationsToDieInto()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))
