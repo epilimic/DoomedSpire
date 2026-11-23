@@ -42,7 +42,12 @@ namespace ManagedDoomTest
                 var frames = MonsterSprites.Frames(MobjType.Troop, letters).ToDictionary(f => f.Letter);
                 Assert.AreEqual(FrameRole.Walk, frames['A'].Role, "the first frame is the walk (and the stand)");
                 Assert.AreEqual(FrameRole.Walk, frames['D'].Role);
-                Assert.IsTrue(frames.Values.Count(f => f.Role == FrameRole.Attack) >= 2, "it has attack frames");
+                Assert.AreEqual(3, frames.Values.Count(f => f.Role == FrameRole.Attack), "its attack is three frames, E F G (not the walk frames it goes back to)");
+                Assert.AreEqual(1, frames.Values.Count(f => f.Role == FrameRole.Pain), "and its hurt one frame");
+                // so the three attack frames spread over the whole attack animation, and the hurt one sits in the middle of it
+                var attack = new[] { 'E', 'F', 'G' }.Select(l => MonsterSprites.Request(frames[l]).Fraction).ToArray();
+                Assert.IsTrue(attack[0] > 0.2 && attack[0] < 0.3 && attack[2] > 0.7 && attack[2] < 0.8, "attack poses at about a quarter, a half and three quarters: " + string.Join(",", attack));
+                Assert.AreEqual(0.5, MonsterSprites.Request(frames['H']).Fraction, 1e-9);
                 Assert.IsTrue(frames.Values.Any(f => f.Role == FrameRole.Pain), "a hurt frame");
                 var death = frames.Values.Where(f => f.Role == FrameRole.Death).OrderBy(f => f.Index).ToList();
                 Assert.IsTrue(death.Count >= 4, "several dying frames: " + death.Count);
@@ -244,16 +249,17 @@ namespace ManagedDoomTest
             {
                 var lumps = BuildImp(wad, letter => letter == 'A' ? Blob(60, 100, 200) : Blob(60 + letter, 100 - letter, 200));
                 var original = MonsterSprites.OriginalHeight(wad, "TROO");
-                var first = Patch.FromData("TROOA0", lumps.First(l => l.Name == "TROOA0").Data);
+                var first = Patch.FromData("TROOA1", lumps.First(l => l.Name == "TROOA1").Data);
                 Assert.AreEqual(original, first.Height, 1, "the first frame is as tall as the imp's own");
                 Assert.IsTrue(first.Width > 10 && first.Width < original, "and narrower than it is tall (the blob is 60 x 100)");
                 Assert.AreEqual(first.Width / 2.0, first.LeftOffset, 2, "centred on the standing point");
                 Assert.AreEqual(first.Height, first.TopOffset, 2, "the bottom of the creature is on the floor");
                 // the same scale for every frame: a later frame's blob is a little smaller (height 100 - letter), so its picture is shorter, not stretched back up
-                var later = Patch.FromData("TROOK0", lumps.First(l => l.Name == "TROOK0").Data);
+                var later = Patch.FromData("TROOK1", lumps.First(l => l.Name == "TROOK1").Data);
                 Assert.IsTrue(later.Height < first.Height, "later frames keep the same scale");
-                Assert.AreEqual(MonsterSprites.Letters(wad, "TROO").Count, lumps.Count);
-                Assert.IsTrue(lumps.All(l => l.Name.EndsWith("0") && l.Name.StartsWith("TROO")));
+                Assert.AreEqual(MonsterSprites.Letters(wad, "TROO").Count * 5, lumps.Count, "five lumps a frame: front, back and the three sides (each side also mirrored)");
+                Assert.IsTrue(lumps.All(l => l.Name.StartsWith("TROO")));
+                Assert.IsTrue(lumps.Select(l => l.Name).Where(n => n.StartsWith("TROOA")).SequenceEqual(new[] { "TROOA1", "TROOA2A8", "TROOA3A7", "TROOA4A6", "TROOA5" }));
             }
         }
 
@@ -263,7 +269,7 @@ namespace ManagedDoomTest
             using (var wad = new Wad(WadPath.Doom1Shareware))
             {
                 var lumps = BuildImp(wad, letter => letter == 'A' ? Blob(60, 100, 200) : null);
-                Assert.AreEqual(MonsterSprites.Letters(wad, "TROO").Count, lumps.Count);
+                Assert.AreEqual(MonsterSprites.Letters(wad, "TROO").Count * 5, lumps.Count);
                 Assert.IsTrue(lumps.All(l => l.Data.SequenceEqual(lumps[0].Data)), "all the same picture");
                 Assert.AreEqual(0, BuildImp(wad, _ => null).Count, "no pictures, no lumps");
             }
@@ -284,10 +290,13 @@ namespace ManagedDoomTest
                     Assert.AreEqual(originalImp.Frames.Length, imp.Frames.Length, "the same frames");
                     for (var f = 0; f < imp.Frames.Length; f++)
                     {
-                        Assert.IsFalse(imp.Frames[f].Rotate, "frame " + f + " is the same picture from every side");
-                        var widths = imp.Frames[f].Patches.Select(p => p.Width).Distinct().ToList();
-                        Assert.AreEqual(1, widths.Count, "all eight sides of frame " + f);
-                        Assert.IsTrue(imp.Frames[f].Patches.All(p => p != null && !imp.Frames[f].Flip.Any(x => x)), "not mirrored");
+                        var frame = imp.Frames[f];
+                        var widths = frame.Patches.Select(p => p.Width).Distinct().ToList();
+                        Assert.AreEqual(1, widths.Count, "all eight sides of frame " + f + " are the one picture");
+                        // the creature faces left: sides 2, 3, 4 (indices 1 to 3) as it is, sides 6, 7, 8 (indices 5 to 7) mirrored, front and back plain
+                        var wanted = new[] { false, false, false, false, false, true, true, true };
+                        Assert.IsTrue(frame.Flip.SequenceEqual(wanted), "frame " + f + " mirrors the sides where the monster faces right");
+                        Assert.IsTrue(frame.Rotate, "frame " + f + " is chosen by the side it is seen from");
                     }
                     Assert.IsTrue((originalImp.Frames[0].Patches[0].Width, originalImp.Frames[0].Patches[0].Height) != (imp.Frames[0].Patches[0].Width, imp.Frames[0].Patches[0].Height), "frame A really changed");
                     // the other monsters keep the game's own pictures

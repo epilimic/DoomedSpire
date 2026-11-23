@@ -24,10 +24,13 @@ internal static class EnemyCapture
 	private const float FeetY = Size - 50f;
 	/// <summary>Frames to wait for the creature's skeleton to be built (it is built in the background) before giving up.</summary>
 	private const int SkeletonWaitFrames = 240;
+	/// <summary>How long to wait for the game to draw a frame (or to go on to the next one) before giving up. If the window is hidden or minimized the viewport never draws, and without a limit the wait would never end.</summary>
+	private static readonly TimeSpan WaitLimit = TimeSpan.FromSeconds(5);
 
 	/// <summary>
 	/// A picture for each request the creature could do (a request whose animations the creature does not have is left out). Null if the creature cannot be
-	/// drawn at all. <paramref name="host"/> is any node in the scene tree; the viewport is added under it for a moment.
+	/// drawn at all. <paramref name="host"/> is any node in the scene tree; the viewport is added under it for a moment. Throws <see cref="TimeoutException"/>
+	/// if the game stops drawing (so the caller can give up on every other creature too).
 	/// </summary>
 	public static async Task<Dictionary<char, CapturedFrame>?> CaptureAsync(Node host, MonsterModel monster, IReadOnlyList<FrameRequest> requests)
 	{
@@ -106,7 +109,7 @@ internal static class EnemyCapture
 
 				viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
 				await NextFrame(host);
-				await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+				await WithTimeout(WaitForDraw(host), "a frame to be drawn");
 				var pixels = PlayerFace.ToPixels(viewport.GetTexture().GetImage());
 				if (pixels != null)
 				{
@@ -115,7 +118,7 @@ internal static class EnemyCapture
 			}
 			return frames;
 		}
-		catch (Exception e)
+		catch (Exception e) when (e is not TimeoutException)
 		{
 			ModLog.Fail("enemy", $"taking pictures of {name}", e);
 			return null;
@@ -131,6 +134,27 @@ internal static class EnemyCapture
 
 	private static async Task NextFrame(Node host)
 	{
+		await WithTimeout(WaitForProcessFrame(host), "the next frame");
+	}
+
+	private static async Task WaitForProcessFrame(Node host)
+	{
 		await host.ToSignal(host.GetTree(), SceneTree.SignalName.ProcessFrame);
+	}
+
+	private static async Task WaitForDraw(Node host)
+	{
+		await host.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+	}
+
+	/// <summary>Waits for the task, but not for ever.</summary>
+	private static async Task WithTimeout(Task task, string what)
+	{
+		var finished = await Task.WhenAny(task, Task.Delay(WaitLimit));
+		if (finished != task)
+		{
+			throw new TimeoutException($"nothing happened for {WaitLimit.TotalSeconds:0} seconds while waiting for {what} (is the game window hidden or minimized?)");
+		}
+		await task; // passes on its error, if it had one
 	}
 }

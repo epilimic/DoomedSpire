@@ -29,6 +29,23 @@ internal sealed class DoomPalette
 	/// <summary>The palette index nearest to the colour, by the "redmean" distance (a cheap measure that follows how the eye sees colour better than plain RGB).</summary>
 	public int Nearest(double r, double g, double b)
 	{
+		// The same colour is asked for again and again (art has big areas of one shade), so answers are remembered. The colour is rounded to whole steps first,
+		// so the answer for a colour never depends on which of two nearly equal colours was asked first.
+		int ri = Math.Clamp((int)Math.Round(r), 0, 255), gi = Math.Clamp((int)Math.Round(g), 0, 255), bi = Math.Clamp((int)Math.Round(b), 0, 255);
+		var key = (ri << 16) | (gi << 8) | bi;
+		if (remembered.TryGetValue(key, out var known))
+		{
+			return known;
+		}
+		var result = Search(ri, gi, bi);
+		remembered[key] = result;
+		return result;
+	}
+
+	private readonly Dictionary<int, int> remembered = new();
+
+	private int Search(double r, double g, double b)
+	{
 		var best = 0;
 		var bestDistance = double.MaxValue;
 		for (var i = 0; i < 256; i++)

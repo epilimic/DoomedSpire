@@ -80,14 +80,16 @@ internal static class MonsterSprites
 		var sprite = DoomInfo.States[(int)info.SpawnState].Sprite;
 		var assigned = new Dictionary<char, MonsterFrame>();
 
-		void Chain(FrameRole role, params MobjState[] starts)
+		// Attacking and being hurt end by going back to walking; the chain stops there, or it would run on through the walk frames and the pose picked for each
+		// attack or hurt frame would only reach the first part of the animation.
+		void Chain(FrameRole role, MobjState stopAt, params MobjState[] starts)
 		{
 			var seen = new HashSet<MobjState>();
 			var chain = new List<char>();
 			foreach (var start in starts)
 			{
 				var state = start;
-				while (state != MobjState.Null && seen.Add(state))
+				while (state != MobjState.Null && state != stopAt && seen.Add(state))
 				{
 					var definition = DoomInfo.States[(int)state];
 					if (definition.Sprite == sprite)
@@ -110,12 +112,12 @@ internal static class MonsterSprites
 			}
 		}
 
-		Chain(FrameRole.Walk, info.SeeState);
-		Chain(FrameRole.Stand, info.SpawnState);
-		Chain(FrameRole.Attack, info.MissileState, info.MeleeState);
-		Chain(FrameRole.Pain, info.PainState);
-		Chain(FrameRole.Death, info.DeathState);
-		Chain(FrameRole.Gib, info.XdeathState);
+		Chain(FrameRole.Walk, MobjState.Null, info.SeeState);
+		Chain(FrameRole.Stand, MobjState.Null, info.SpawnState);
+		Chain(FrameRole.Attack, info.SeeState, info.MissileState, info.MeleeState);
+		Chain(FrameRole.Pain, info.SeeState, info.PainState);
+		Chain(FrameRole.Death, MobjState.Null, info.DeathState);
+		Chain(FrameRole.Gib, MobjState.Null, info.XdeathState);
 
 		return letters.Select(l => assigned.TryGetValue(l, out var frame) ? frame : new MonsterFrame(l, FrameRole.Other, 0, 1)).ToList();
 	}
@@ -219,7 +221,10 @@ internal static class MonsterSpriteBuilder
 	private const int MaxSize = 200;
 
 	/// <summary>
-	/// Makes one lump per frame letter, named like <c>TROOA0</c> (rotation 0: the one picture is used from every side). Every frame is scaled by the same
+	/// Makes the lumps of each frame letter: the one picture is used from every side, but shown the way the creature is facing. The creature faces left, so the
+	/// sides on which DOOM's monster faces left (rotations 2, 3, 4) get the picture as it is and the sides on which it faces right (6, 7, 8) the same lump
+	/// mirrored (the engine mirrors a lump named like <c>TROOA2A8</c> for its second side); the front and the back (1 and 5) get the plain picture.
+	/// Every frame is scaled by the same
 	/// amount, so the creature does not change size as it moves: the amount that makes the first frame (<paramref name="referenceLetter"/>) as tall as
 	/// <paramref name="targetHeight"/>. The creature's standing point is where DOOM puts its feet. A letter with no captured picture gets the first frame's.
 	/// </summary>
@@ -246,7 +251,13 @@ internal static class MonsterSpriteBuilder
 		{
 			var source = frames.TryGetValue(letter, out var f) && Edges(f.Image) != null ? f : reference;
 			var rendered = Render(source, scale, palette);
-			lumps.Add((sprite + letter + "0", DoomPatch.Encode(rendered.Width, rendered.Height, rendered.Left, rendered.Top, rendered.Pixels)));
+			var data = DoomPatch.Encode(rendered.Width, rendered.Height, rendered.Left, rendered.Top, rendered.Pixels);
+			var frame = sprite + letter;
+			lumps.Add((frame + "1", data));
+			lumps.Add((frame + "2" + letter + "8", data)); // 2 as it is, 8 mirrored
+			lumps.Add((frame + "3" + letter + "7", data));
+			lumps.Add((frame + "4" + letter + "6", data));
+			lumps.Add((frame + "5", data));
 		}
 		return lumps;
 	}
@@ -309,7 +320,11 @@ internal static class MonsterSpriteBuilder
 	{
 		var image = frame.Image;
 		var box = Edges(image)!.Value;
-		var width = Math.Max(1, (int)Math.Ceiling(box.Width * scale));
+		// The picture is cut to the same width on both sides of the standing point, so that it stands in the same place when the engine mirrors it.
+		var half = Math.Max(frame.OriginX - box.Left, box.Left + box.Width - frame.OriginX);
+		var canvasLeft = frame.OriginX - half;
+		var canvasWidth = 2 * half;
+		var width = Math.Max(2, (int)Math.Ceiling(canvasWidth * scale));
 		var height = Math.Max(1, (int)Math.Ceiling(box.Height * scale));
 		var pixels = new int[width * height];
 		const float back = 24f; // a dark grey for the soft edge of the creature to blend into, as for the faces
@@ -319,8 +334,8 @@ internal static class MonsterSpriteBuilder
 			var bottom = Math.Min(box.Top + box.Height, box.Top + (oy + 1) / scale);
 			for (var ox = 0; ox < width; ox++)
 			{
-				var left = box.Left + ox / scale;
-				var right = Math.Min(box.Left + box.Width, box.Left + (ox + 1) / scale);
+				var left = canvasLeft + ox / scale;
+				var right = Math.Min(canvasLeft + canvasWidth, canvasLeft + (ox + 1) / scale);
 				double sumR = 0, sumG = 0, sumB = 0, sumA = 0, weight = 0;
 				for (var sy = (int)Math.Floor(top); sy < Math.Ceiling(bottom); sy++)
 				{
@@ -345,6 +360,6 @@ internal static class MonsterSpriteBuilder
 				pixels[oy * width + ox] = palette.Nearest(back + (sumR / sumA - back) * alpha, back + (sumG / sumA - back) * alpha, back + (sumB / sumA - back) * alpha);
 			}
 		}
-		return (pixels, width, height, (int)Math.Round((frame.OriginX - box.Left) * scale), (int)Math.Round((frame.OriginY - box.Top) * scale));
+		return (pixels, width, height, width / 2, (int)Math.Round((frame.OriginY - box.Top) * scale));
 	}
 }

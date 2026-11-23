@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using DoomedSpire.Host;
 using Godot;
 using ManagedDoom;
@@ -116,26 +117,44 @@ internal static class PlayerFace
 	/// </summary>
 	private static void WriteSheetsToPaint(string folder, Func<string, PatchSpec> spec, DoomPalette palette, FaceSettings settings)
 	{
-		foreach (var character in MegaCrit.Sts2.Core.Models.ModelDb.AllCharacters)
+		// The sheets only change with the game, this build of the mod and the face numbers, so when none did and every sheet is there they are left alone.
+		string? gameVersion = null;
+		ModLog.Try("face", "reading the game's version", () => gameVersion = MegaCrit.Sts2.Core.Debug.ReleaseInfoManager.Instance.ReleaseInfo?.Version);
+		var keyPath = Path.Combine(folder, "to-paint.key");
+		var key = string.IsNullOrEmpty(gameVersion) ? null : string.Join("|", gameVersion, typeof(PlayerFace).Assembly.ManifestModule.ModuleVersionId, FaceTuning.Source, settings);
+		var playable = MegaCrit.Sts2.Core.Models.ModelDb.AllCharacters.Where(c => c.IsPlayable).ToList();
+		string SheetPath(MegaCrit.Sts2.Core.Models.CharacterModel c) => Path.Combine(folder, c.Id.Entry.ToLowerInvariant() + "-faces-to-paint.png");
+		if (key != null && File.Exists(keyPath) && File.ReadAllText(keyPath) == key && playable.All(c => File.Exists(SheetPath(c))))
+		{
+			return;
+		}
+		if (File.Exists(keyPath))
+		{
+			File.Delete(keyPath);
+		}
+		var allWritten = true;
+		foreach (var character in playable)
 		{
 			try
 			{
-				if (!character.IsPlayable)
-				{
-					continue;
-				}
 				var picture = ReadPicture(character);
 				if (picture == null)
 				{
+					allWritten = false;
 					continue;
 				}
 				var faces = FaceFactory.Build(picture, spec, palette, settings with { Blood = 0f, Neutral = true });
-				WriteSheet(FaceFactory.Sheet(faces, palette, 1, transparentBackground: true), Path.Combine(folder, character.Id.Entry.ToLowerInvariant() + "-faces-to-paint.png"));
+				WriteSheet(FaceFactory.Sheet(faces, palette, 1, transparentBackground: true), SheetPath(character));
 			}
 			catch (Exception e)
 			{
+				allWritten = false;
 				ModLog.Fail("face", "writing the sheet to paint for " + character.Id.Entry, e);
 			}
+		}
+		if (allWritten && key != null)
+		{
+			File.WriteAllText(keyPath, key);
 		}
 	}
 

@@ -225,7 +225,18 @@ internal sealed class DoomView
 			var addOns = new List<string>();
 			if (faces != null) addOns.Add(faces);
 			if (enemies != null) addOns.Add(enemies);
-			var game = DoomSession.Create(path, new AudioOptions { OpenSoundFont = SoundFontData.Open, Report = ReportAudioProblem }, addOns.Count == 0 ? null : addOns);
+			var audio = new AudioOptions { OpenSoundFont = SoundFontData.Open, Report = ReportAudioProblem };
+			DoomSession game;
+			try
+			{
+				game = DoomSession.Create(path, audio, addOns.Count == 0 ? null : addOns);
+			}
+			catch (Exception e) when (addOns.Count > 0)
+			{
+				// the character's face or the enemy pictures broke the game: start without them rather than not at all
+				ModLog.Fail("game", "starting with the face and enemy pictures (starting without them instead)", e);
+				game = DoomSession.Create(path, audio, null);
+			}
 			session = game;
 			rgba = new byte[game.Width * game.Height * 4];
 			image = Image.CreateFromData(game.Width, game.Height, false, Image.Format.Rgba8, rgba);

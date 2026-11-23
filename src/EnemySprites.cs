@@ -35,7 +35,14 @@ internal static class EnemySprites
 		(MobjType.Spider, () => ModelDb.Monster<Monsters.Fabricator>()),        // spider mastermind
 	};
 
-	/// <summary>Builds the add-on WAD of enemy pictures into <paramref name="folder"/> and returns its path, or null (the log says why) to keep DOOM's own monsters.</summary>
+	/// <summary>After this long the rest of the enemies are not drawn: the game starts with what there is (the rest keep DOOM's own pictures).</summary>
+	private static readonly TimeSpan TimeLimit = TimeSpan.FromSeconds(30);
+
+	/// <summary>
+	/// Builds the add-on WAD of enemy pictures into <paramref name="folder"/> and returns its path, or null (the log says why) to keep DOOM's own monsters.
+	/// The result is kept: the pictures only change with the game, the mod or the DOOM game, so while those are the same (and every enemy could be drawn) the
+	/// saved file is used and nothing is drawn, which makes starting a game instant. Delete <c>enemies.key</c> in the data folder to draw them again.
+	/// </summary>
 	public static async Task<string?> TryBuildAsync(Godot.Node host, string iwadPath, string folder)
 	{
 		try
@@ -52,13 +59,33 @@ internal static class EnemySprites
 			}
 
 			var timer = Stopwatch.StartNew();
+			var chosen = Replacements.Select(r => (r.Monster, Enemy: r.Enemy())).ToList();
+			var path = Path.Combine(folder, "enemies.wad");
+			var keyPath = Path.Combine(folder, "enemies.key");
+			var key = CacheKey(iwadPath, chosen.Select(c => $"{c.Monster}={c.Enemy.Id.Entry}"));
+			if (key != null && File.Exists(path) && File.Exists(keyPath) && File.ReadAllText(keyPath) == key)
+			{
+				ModLog.Info("enemy", $"using the enemy pictures saved earlier ({path}); delete enemies.key to draw them again");
+				return path;
+			}
+			if (File.Exists(keyPath))
+			{
+				File.Delete(keyPath); // whatever is saved is out of date from here on
+			}
 			var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
+			var complete = true;
 			var lumps = new List<(string Name, byte[] Data)>();
 			var done = new List<string>();
 			var gibs = MonsterSprites.GibAnimations(wad);
 
-			foreach (var (type, enemy) in Replacements)
+			foreach (var (type, monster) in chosen)
 			{
+				if (timer.Elapsed > TimeLimit)
+				{
+					ModLog.Info("enemy", $"{TimeLimit.TotalSeconds:0} seconds are up, so the rest keep DOOM's own pictures");
+					complete = false;
+					break;
+				}
 				var sprite = MonsterSprites.SpriteName(type);
 				var letters = MonsterSprites.Letters(wad, sprite);
 				var height = MonsterSprites.OriginalHeight(wad, sprite);
@@ -75,11 +102,21 @@ internal static class EnemySprites
 					continue;
 				}
 
-				var monster = enemy();
-				var frames = await EnemyCapture.CaptureAsync(host, monster, requests);
+				Dictionary<char, CapturedFrame>? frames;
+				try
+				{
+					frames = await EnemyCapture.CaptureAsync(host, monster, requests);
+				}
+				catch (TimeoutException e)
+				{
+					ModLog.Fail("enemy", $"drawing {monster.Id.Entry} (the game stopped drawing, so the rest keep DOOM's own pictures)", e);
+					complete = false;
+					break;
+				}
 				if (frames == null || !frames.ContainsKey(letters[0]))
 				{
 					ModLog.Info("enemy", $"{monster.Id.Entry} could not be drawn for the {sprite} ({type}), so it keeps DOOM's own picture (the lines above say why)");
+					complete = false;
 					continue;
 				}
 				var built = MonsterSpriteBuilder.Build(sprite, keptLetters, frames, letters[0], height, palette);
@@ -97,9 +134,14 @@ internal static class EnemySprites
 				return null;
 			}
 			Directory.CreateDirectory(folder);
-			var path = Path.Combine(folder, "enemies.wad");
-			File.WriteAllBytes(path, PwadWriter.Build(MonsterSpriteBuilder.WithMarkers(lumps)));
-			ModLog.Info("enemy", $"enemy pictures ready in {timer.ElapsedMilliseconds} ms: {string.Join(", ", done)} ({path})");
+			var temp = path + ".tmp"; // written under another name and moved into place, so a crash half way never leaves a short file under the real name
+			File.WriteAllBytes(temp, PwadWriter.Build(MonsterSpriteBuilder.WithMarkers(lumps)));
+			File.Move(temp, path, overwrite: true);
+			if (complete && key != null)
+			{
+				File.WriteAllText(keyPath, key);
+			}
+			ModLog.Info("enemy", $"enemy pictures ready in {timer.ElapsedMilliseconds} ms: {string.Join(", ", done)} ({path}){(complete && key != null ? "; saved for the next game" : "; not saved (something was left out or the game version is not known), so they are drawn again next time")}");
 			return path;
 		}
 		catch (Exception e)
@@ -107,5 +149,28 @@ internal static class EnemySprites
 			ModLog.Fail("enemy", "making the enemies", e);
 			return null;
 		}
+	}
+
+	/// <summary>
+	/// What the saved pictures depend on: the game's version, this build of the mod, the DOOM game (name and size) and who plays which monster. Null when the game's
+	/// version cannot be read (then nothing is saved, as a game update could not be noticed).
+	/// </summary>
+	private static string? CacheKey(string iwadPath, IEnumerable<string> enemies)
+	{
+		string? gameVersion = null;
+		try
+		{
+			gameVersion = MegaCrit.Sts2.Core.Debug.ReleaseInfoManager.Instance.ReleaseInfo?.Version;
+		}
+		catch (Exception e)
+		{
+			ModLog.Fail("enemy", "reading the game's version", e);
+		}
+		if (string.IsNullOrEmpty(gameVersion))
+		{
+			return null;
+		}
+		var build = typeof(EnemySprites).Assembly.ManifestModule.ModuleVersionId;
+		return string.Join("|", gameVersion, build, Path.GetFileName(iwadPath), new FileInfo(iwadPath).Length, MonsterSprites.FramesBeforeTheBits, string.Join(",", enemies));
 	}
 }
