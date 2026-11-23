@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using DoomedSpire.Host;
 using Godot;
 using ManagedDoom;
@@ -26,9 +25,6 @@ namespace DoomedSpire;
 /// </summary>
 internal sealed class DoomView
 {
-	/// <summary>Looked for in the mod's data folder, in this order. (Piece 6 will embed the game data in the dll and this goes away.)</summary>
-	private static readonly string[] WadNames = { "freedoom1.wad", "freedoom2.wad" };
-
 	/// <summary>DOOM's clock: 35 game tics a second.</summary>
 	private const double TicSeconds = 1.0 / 35.0;
 	private const int MaxFailuresBeforeStopping = 5;
@@ -94,7 +90,7 @@ internal sealed class DoomView
 		mouseArea.GuiInput += OnGuiInput;
 	}
 
-	/// <summary>Called when the popup opens: finds the game data, starts a fresh game and begins playing it. If the game data is missing it says where to put it.</summary>
+	/// <summary>Called when the popup opens: gets the game data ready (the embedded Freedoom, written to disk the first time), starts a fresh game and begins playing it.</summary>
 	public void Start()
 	{
 		if (session != null)
@@ -102,19 +98,11 @@ internal sealed class DoomView
 			return;
 		}
 
-		var folder = ProjectSettings.GlobalizePath("user://DoomedSpire");
-		ModLog.Try("game", "creating the data folder", () => DirAccess.MakeDirRecursiveAbsolute(folder));
-		var wad = WadNames.Select(name => Path.Combine(folder, name)).FirstOrDefault(File.Exists);
-		if (wad == null)
-		{
-			ModLog.OnceInfo("game", "no-wad", $"no game data found; looked for {string.Join(" or ", WadNames)} in {folder}");
-			Say($"DOOM needs the Freedoom game data.\n\nCopy freedoom1.wad into this folder:\n{folder}\n\nthen open this again.");
-			return;
-		}
-
 		try
 		{
 			var timer = Stopwatch.StartNew();
+			var wad = FreedoomData.EnsureOnDisk();
+			var dataReady = timer.ElapsedMilliseconds;
 			session = DoomSession.Create(wad);
 			rgba = new byte[session.Width * session.Height * 4];
 			image = Image.CreateFromData(session.Width, session.Height, false, Image.Format.Rgba8, rgba);
@@ -136,7 +124,7 @@ internal sealed class DoomView
 			screen.GrabFocus();
 			KeyLock.Active = true;
 			closeButton.Visible = false;
-			ModLog.Info("game", $"started from {Path.GetFileName(wad)} ({session.Width}x{session.Height}) in {timer.ElapsedMilliseconds} ms");
+			ModLog.Info("game", $"started from {Path.GetFileName(wad)} ({session.Width}x{session.Height}) in {timer.ElapsedMilliseconds} ms (game data ready after {dataReady} ms)");
 		}
 		catch (Exception e)
 		{

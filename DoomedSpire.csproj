@@ -34,6 +34,9 @@
   <!-- Files baked into the dll (keep the mod folder to the dll + manifest only: the game treats EVERY .json in a mod folder as a manifest). -->
   <ItemGroup>
     <!-- Pictures: put them in assets/ and uncomment (see solutions/embedded-art): <EmbeddedResource Include="assets/**/*.png;assets/**/*.webp" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" /> -->
+    <!-- DOOM's game data (Freedoom, BSD) and its license notice, see assets/freedoom/README.md. Written to disk the first time DOOM opens (src/FreedoomData.cs). -->
+    <EmbeddedResource Include="assets/freedoom/freedoom1.wad" LogicalName="freedoom1.wad" />
+    <EmbeddedResource Include="assets/freedoom/LICENSE.txt" LogicalName="freedoom-LICENSE.txt" />
   </ItemGroup>
 
   <Target Name="CheckSts2Paths" BeforeTargets="ResolveAssemblyReferences;CoreCompile">
