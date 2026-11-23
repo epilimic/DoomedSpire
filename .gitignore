@@ -27,3 +27,4 @@ workshop/workshop.json
 # tools
 __pycache__/
 work/
+tests/Engine.Tests/wads/

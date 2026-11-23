@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Tests for the vendored DOOM engine (src/ManagedDoom). Plain console runner, no packages, no game DLLs, no Godot.
+       Targets net8.0 because the cloud container only has the .NET 8 SDK; the engine only uses APIs that exist in net8 and net9.
+       Run:  dotnet run, project tests/Engine.Tests, Release     (see README.md for the Freedoom file it needs) -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RootNamespace>ManagedDoomTest</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../src/ManagedDoom/**/*.cs" />
+    <Compile Include="*.cs;upstream/**/*.cs" />
+  </ItemGroup>
+
+</Project>

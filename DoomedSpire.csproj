@@ -19,6 +19,11 @@
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
+  <!-- Test projects live in tests/ and are not part of the mod: keep their .cs files (and generated obj/ files) out of the dll. -->
+  <ItemGroup>
+    <Compile Remove="tests/**" />
+  </ItemGroup>
+
   <!-- The game's own assemblies. Private=false so they are NOT copied next to the mod's dll. Add Steamworks.NET.dll etc. only when the code needs them. -->
   <ItemGroup>
     <Reference Include="sts2"><HintPath>$(Sts2DataDir)/sts2.dll</HintPath><Private>false</Private></Reference>
