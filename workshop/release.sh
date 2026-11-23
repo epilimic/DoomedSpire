@@ -7,7 +7,7 @@
 #   3. dotnet publish
 #      (publish also stages the build into workshop/content)
 #   4. bash workshop/upload.sh           (all its checks and the scrub, shows what goes up, asks y/N, uploads, records it)
-#   5. commits and pushes the upload record (workshop/last_upload.txt, and mod_id.txt after a first upload)
+#   5. says whether the upload was recorded (upload.sh itself commits and pushes workshop/last_upload.txt, and mod_id.txt after a first upload)
 #
 # It never writes any Workshop text. Identical in every mod repo: the mod id is the name of the .csproj in the repo root.
 set -euo pipefail
@@ -120,13 +120,20 @@ bash "$HERE/upload.sh"
 
 # --- 5. record ---
 step "5/5  record the upload"
-FILES=()
-for f in workshop/last_upload.txt workshop/mod_id.txt; do [ -f "$f" ] && FILES+=("$f"); done
-if [ "${#FILES[@]}" -gt 0 ] && [ -n "$(git status --porcelain -- "${FILES[@]}")" ]; then
-    git add -- "${FILES[@]}"
-    git commit -q -m "Record upload $CUR"
-    git push -q
-    echo "Committed and pushed: ${FILES[*]}"
+RECORDED="$(sed -n 's/^version=//p' "$HERE/last_upload.txt" 2>/dev/null | head -1)"
+if [ "$RECORDED" = "$CUR" ]; then
+    # upload.sh committed and pushed the record itself; this catches the case where it could not (a failed push, say).
+    FILES=()
+    for f in workshop/last_upload.txt workshop/mod_id.txt; do [ -f "$f" ] && FILES+=("$f"); done
+    if [ "${#FILES[@]}" -gt 0 ] && [ -n "$(git status --porcelain -- "${FILES[@]}")" ]; then
+        git add -- "${FILES[@]}"
+        git commit -q -m "Record upload $CUR"
+        git push -q
+        echo "Committed and pushed: ${FILES[*]}"
+    fi
+    if [ "$(git rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)" != "0" ]; then
+        git push -q
+    fi
     echo
     echo "Done. Steam updates subscribers only while their game is closed. Once Steam has downloaded it here,"
     echo "bash workshop/versions.sh should show the Workshop copy at $CUR."

@@ -229,7 +229,13 @@ PCK_DIRS = ("tests/", "test/", "docs/", "tools/", "workshop/", "dist/", "bin/", 
 def check_pck(rel, data):
     rx = rb"res://[\w./ \-]+?\.(?:csproj|cs|png|ogg|wav|mp3|tscn|tres|scn|res|import|gd|json|md|txt|py|sh|sln|cfg|log|bak|psd|kra|xcf|blend|aseprite|ase|gif|jpe?g|webp|svg|ttf|otf|glb|gltf|gdshader|shader|material|uid|props|ya?ml)(?![A-Za-z0-9])"
     paths = sorted({m.group(0)[len(b"res://"):].decode("latin-1") for m in re.finditer(rx, data)})
-    print(f"  note: {rel} lists {len(paths)} files")
+    # A Godot C# project lists EVERY .cs file of the project in the .pck (the engine needs them to attach scripts), whatever exclude_filter says, as empty placeholders: the code is in the dll.
+    # They are not reported by folder; instead the .pck is searched for what real C# source looks like.
+    scripts = [p for p in paths if p.lower().endswith(".cs")]
+    paths = [p for p in paths if p not in scripts]
+    print(f"  note: {rel} lists {len(paths)} files" + (f" and {len(scripts)} C# script placeholders" if scripts else ""))
+    if scripts and re.search(rb"(?m)^\s*(namespace\s+[A-Za-z_][\w.]*|using\s+[A-Z][\w.]*;)", data):
+        warn(f"{rel} contains what looks like C# source text, not just placeholders for the scripts")
     bad_dirs = [p for p in paths if p.startswith(PCK_DIRS)]
     bad_ext = [p for p in paths if p.lower().endswith(PCK_NEVER) and p not in bad_dirs]
     if bad_dirs:

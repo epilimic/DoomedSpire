@@ -13,15 +13,15 @@ This folder is the whole upload workspace, kept inside the repo, so every mod lo
    2. `git pull` (stops on uncommitted or unpushed changes);
    3. checks the manifest version is higher than your last upload and, if not, asks for the new one (Enter accepts the next patch number), edits `"version"` in `<ModId>.json`, commits and pushes it;
    4. `dotnet publish`, which also stages the build into `workshop/content/`;
-   5. `bash workshop/upload.sh`: the checks and the scrub below, what is about to go up, `Upload this? [y/N]`, the upload, "Did the uploader report success?";
-   6. commits and pushes `workshop/last_upload.txt` (and `mod_id.txt` after a first upload).
+   5. `bash workshop/upload.sh`: the checks and the scrub below, what is about to go up, `Upload this? [y/N]`, the upload, "Did the uploader report success?", then it records the upload and **commits and pushes `workshop/last_upload.txt` (and `mod_id.txt` after a first upload) itself**, so nothing is left uncommitted;
+   6. says whether the upload was recorded (and commits and pushes the record if `upload.sh` could not).
 3. Check the item on the Workshop page. Steam may ask you to accept its Workshop agreement once. Subscribers get the update only while their game is closed; tell people to restart the game after it downloads.
 4. When Steam has delivered it to you (game closed), `bash workshop/versions.sh` should show the Workshop copy at the new version.
 
 **First upload of a new mod:** before step 1, create `workshop/workshop.json` by copying `workshop.example.json` (a session does this, unchanged), and make your own `image.png` (or an animated `image.gif`). Use
 `"visibility": "private"` for the first upload, then set it on the Workshop page after checking. The uploader writes `mod_id.txt` itself.
 
-**By hand**, if you ever want to: `git pull`, raise the version in `<ModId>.json`, commit and push, `dotnet publish`, `bash workshop/upload.sh`, commit and push `last_upload.txt`.
+**By hand**, if you ever want to: `git pull`, raise the version in `<ModId>.json`, commit and push, `dotnet publish`, `bash workshop/upload.sh` (it commits and pushes `last_upload.txt` itself).
 
 ## Animated picture (optional)
 
@@ -50,8 +50,8 @@ At its bottom are two `_REFERENCE_...` lines (the visibility values and the tag 
 | `image.gif` | Animated page picture, instead of `image.png`; needs the gif-capable uploader (above). |
 | `previews/` | Optional extra pictures (each under 1 MB). If the folder exists, pictures missing from it are removed from the item (matched by file name). If the folder does not exist, previews are left alone. |
 | `content/` | What gets uploaded: `<ModId>.dll`, `<ModId>.json` and, for a Godot-export mod, `<ModId>.pck`. Written by `dotnet publish` (it clears anything stale first); its files are not committed (only `.gitkeep`). |
-| `mod_id.txt` | **You never create it.** The uploader writes it during the first upload of a new mod. **Commit it, and never lose it:** it ties this folder to the Workshop item. Without it the next upload creates a second item. Delete it only to deliberately make a new item. |
-| `last_upload.txt` | Written by `upload.sh` when you confirm an upload worked: version, DLL fingerprint, date. **Commit it.** It is what `versions.sh` and `upload.sh` compare the next version against. |
+| `mod_id.txt` | **You never create it.** The uploader writes it during the first upload of a new mod. **It is committed and pushed for you right after the upload** (`upload.sh`). Never lose it: it ties this folder to the Workshop item. Without it the next upload creates a second item. Delete it only to deliberately make a new item. |
+| `last_upload.txt` | Written by `upload.sh` when you confirm an upload worked: version, DLL fingerprint, date. `upload.sh` commits and pushes it for you. It is what `versions.sh` and `upload.sh` compare the next version against. |
 | `release.sh` | The one command for a release (above). |
 | `upload.sh` | The checks (below), prints version, note, visibility, tags and the fingerprint, asks `y/N`, runs the uploader, then asks whether it worked and records it. Writes nothing to `workshop.json`. |
 | `versions.sh` | The drift check: lists the version in the repo manifest, a stray `.csproj` `<Version>`, the game folder, `content/`, the last recorded upload and the Workshop copy Steam delivered to this machine, and flags disagreements (including a game-folder dll that is not the staged one). Read-only; `--for-upload` makes the blocking ones exit 1. |
@@ -97,7 +97,7 @@ Only these go to the Workshop: `content/`, `image.png`, `previews/*`, and the te
   `image.png` without those chunks and leaves the pixels alone. A JPEG or GIF preview has to be re-exported without metadata.
 
 It **warns** (look, then decide) on other absolute paths, Windows paths, email addresses, Steam account ids, and files packed into the `.pck` from folders that should not ship (`tests/`,
-`docs/`, `tools/` ...; add them to `exclude_filter` in `export_presets.cfg`) or that look like source or notes.
+`docs/`, `tools/` ...; add them to `exclude_filter` in `export_presets.cfg`) or that look like source or notes. A Godot C# project's `.pck` always lists every `.cs` file as an empty placeholder (`exclude_filter` does not remove them; the code is in the dll), so those are not reported by folder; the scrub warns if the `.pck` contains what looks like real C# source instead.
 
 Keeping paths out of the dll is done at the source: the `.csproj` has the two `PathMap` lines, and a Godot-export mod's `.sln` must map `Release|Any CPU` to `Release|Any CPU`
 (the BaseLib template maps it to Debug, which makes `dotnet publish` produce a Debug dll). The scrub is the check that this worked.

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks everything it can (including a scrub of every file for local paths and personal details), shows exactly what is about to go to the Workshop, asks, then runs the official uploader.
 # It never writes or changes any Workshop text: title, description, visibility, tags and the change note come from workshop.json, which only the owner edits
-# (it is git-ignored; created once from workshop.example.json). After an upload you confirm it worked, and it records the version in last_upload.txt.
+# (it is git-ignored; created once from workshop.example.json). After an upload you confirm it worked, and it records the version in last_upload.txt
+# and commits and pushes that record (last_upload.txt, and mod_id.txt after a first upload) itself, so the next run does not stop on uncommitted files.
 # Identical in every mod repo: the mod id is the name of the .csproj in the repo root.
 set -euo pipefail
 
@@ -126,12 +127,32 @@ mv -f mod-uploader.log /tmp/mod-uploader.log 2>/dev/null || true   # keep the lo
 echo
 read -r -p "Did the uploader report success? [y/N] " ok
 if [ "$ok" = "y" ]; then
+    VER="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8-sig"))["version"])' "$HERE/content/$MOD.json")"
     {
-        echo "version=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1],encoding="utf-8-sig"))["version"])' "$HERE/content/$MOD.json")"
+        echo "version=$VER"
         echo "dll=$(sha256sum "$HERE/content/$MOD.dll" | cut -c1-12)"
         echo "date=$(date +%F)"
     } > "$HERE/last_upload.txt"
-    echo "Recorded in workshop/last_upload.txt. Commit it (and workshop/mod_id.txt after a first upload), then push."
+    echo "Recorded in workshop/last_upload.txt."
+    # Commit and push the record (and mod_id.txt, which the uploader writes at a first upload), so nothing is left uncommitted: the next run would
+    # stop on it, and losing mod_id.txt would make a second Workshop item. Only these two files are ever added.
+    if git -C "$ROOT" rev-parse --git-dir > /dev/null 2>&1; then
+        REC=()
+        for f in last_upload.txt mod_id.txt; do [ -f "$HERE/$f" ] && REC+=("workshop/$f"); done
+        if [ "${#REC[@]}" -gt 0 ] && [ -n "$(git -C "$ROOT" status --porcelain -- "${REC[@]}")" ]; then
+            if git -C "$ROOT" add -- "${REC[@]}" && git -C "$ROOT" commit -q -m "Record upload $VER" -- "${REC[@]}"; then
+                if git -C "$ROOT" push -q; then
+                    echo "Committed and pushed: ${REC[*]}"
+                else
+                    echo "Committed ${REC[*]} but the push failed. Run: git push"
+                fi
+            else
+                echo "Could not commit ${REC[*]}. Commit them yourself (never lose workshop/mod_id.txt), then push."
+            fi
+        fi
+    else
+        echo "This is not a git repository: keep workshop/last_upload.txt and workshop/mod_id.txt safe."
+    fi
 else
     echo "Nothing recorded. Run again once the cause is fixed."
 fi
