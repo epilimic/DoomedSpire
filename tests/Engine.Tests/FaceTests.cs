@@ -261,6 +261,27 @@ namespace ManagedDoomTest
             }
         }
 
+        [TestMethod]
+        public void TheTurnLeftFaceIsTheTurnRightFaceMirroredAtEveryHealthLevel()
+        {
+            var (faces, palette, _, wad) = Setup(FaceSettings.Default);
+            using (wad)
+            {
+                for (var level = 0; level < 5; level++)
+                {
+                    var right = OnScreen(Lump(faces, "STFTR" + level + "0"));
+                    var left = OnScreen(Lump(faces, "STFTL" + level + "0"));
+                    Assert.IsTrue(right.Count > 300, "there is a face");
+                    // the straight face is 24 wide and drawn from column 5, so its middle is between columns 16 and 17: a column u goes to 33 - u
+                    Assert.AreEqual(right.Count, left.Count, "level " + level + ": same number of pixels");
+                    foreach (var (at, colour) in right)
+                    {
+                        Assert.IsTrue(left.TryGetValue((33 - at.U, at.V), out var mirrored) && mirrored == colour, $"level {level}: turn right at {at} is the same colour as turn left mirrored");
+                    }
+                }
+            }
+        }
+
         /// <summary>The average colour of a face's pixels.</summary>
         private static (double R, double G, double B) Average(byte[] lump, DoomPalette palette)
         {

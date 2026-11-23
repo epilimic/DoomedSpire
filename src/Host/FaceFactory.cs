@@ -113,9 +113,12 @@ internal static class FaceFactory
 			var s = spec(name);
 			if (kind == FaceKind.TurnLeft || kind == FaceKind.TurnRight)
 			{
-				// the turned head is drawn straight into this lump's own rectangle (it is wider than the others, to hold the turned head)
-				var turned = Quantize(TurnHead(shaded, kind == FaceKind.TurnRight, reference, s), palette);
-				lumps.Add((name, DoomPatch.Encode(s.Width, s.Height, s.Left, s.Top, turned)));
+				// The head turned right is drawn straight into its lump's own rectangle (wider than the straight faces, to hold the turned head). The turn left
+				// is that very face mirrored about the middle of the head, then cut to the turn-left lump's rectangle.
+				var rightSpec = kind == FaceKind.TurnRight ? s : spec("STFTR" + pain + "0");
+				var turned = TurnHead(shaded, reference, rightSpec);
+				var image = kind == FaceKind.TurnRight ? turned : Mirror(turned, reference, rightSpec, s);
+				lumps.Add((name, DoomPatch.Encode(s.Width, s.Height, s.Left, s.Top, Quantize(image, palette))));
 				continue;
 			}
 			var canonical = Quantize(shaded, palette);
@@ -346,14 +349,14 @@ internal static class FaceFactory
 	private const double TurnAmount = 0.35;
 
 	/// <summary>
-	/// The face with the head turned toward one side, drawn into the rectangle of one of the turning lumps. The head's outline stays where it is and what is inside
-	/// it slides toward the side the head turns to: the features move over, the far side is squeezed and the near side stretched (across the head, a position
+	/// The face with the head turned to the right, drawn into the rectangle of the turn-right lump. The head's outline stays where it is and what is inside
+	/// it slides to the right: the features move over, the far side is squeezed and the near side stretched (across the head, a position
 	/// <c>u</c> from -1 to 1 goes to <c>u + d (1 - u squared)</c>, which moves the middle by <c>d</c> and leaves both edges where they are). The rows stay where they are.
 	/// </summary>
-	private static Image TurnHead(Image face, bool toRight, PatchSpec reference, PatchSpec lump)
+	private static Image TurnHead(Image face, PatchSpec reference, PatchSpec lump)
 	{
 		var result = new Image(lump.Width, lump.Height);
-		var d = (toRight ? 1 : -1) * TurnAmount;
+		var d = TurnAmount;
 		var half = face.Width / 2.0;
 		const int samples = 4; // across each output pixel, averaged so squeezed columns do not look ragged
 		for (var py = 0; py < lump.Height; py++)
@@ -379,6 +382,30 @@ internal static class FaceFactory
 					var o = py * lump.Width + px;
 					result.R[o] = (float)(sumR / sumA); result.G[o] = (float)(sumG / sumA); result.B[o] = (float)(sumB / sumA); result.A[o] = (float)(sumA / samples);
 				}
+			}
+		}
+		return result;
+	}
+
+	/// <summary>
+	/// A picture drawn in the rectangle of one lump, shown the other way round (left and right swapped about the middle of the head, which is where the straight
+	/// face's middle is on screen) and put in the rectangle of another lump. Rows stay where they are on screen.
+	/// </summary>
+	private static Image Mirror(Image from, PatchSpec reference, PatchSpec fromLump, PatchSpec toLump)
+	{
+		var result = new Image(toLump.Width, toLump.Height);
+		var mirrorSum = -2 * reference.Left + reference.Width - 1; // a column u on screen goes to (this - u)
+		for (var py = 0; py < toLump.Height; py++)
+		{
+			var sy = py - toLump.Top + fromLump.Top;
+			if (sy < 0 || sy >= from.Height) { continue; }
+			for (var px = 0; px < toLump.Width; px++)
+			{
+				var sx = mirrorSum - (px - toLump.Left) + fromLump.Left;
+				if (sx < 0 || sx >= from.Width) { continue; }
+				var s = sy * from.Width + sx;
+				var d = py * toLump.Width + px;
+				result.R[d] = from.R[s]; result.G[d] = from.G[s]; result.B[d] = from.B[s]; result.A[d] = from.A[s];
 			}
 		}
 		return result;
