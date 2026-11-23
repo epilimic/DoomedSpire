@@ -181,7 +181,7 @@ internal static class PlayerFace
 	}
 
 	/// <summary>A picture as plain pixels (R, G, B, A each). Null if it is empty.</summary>
-	private static Rgba? ToPixels(Image? image)
+	internal static Rgba? ToPixels(Image? image)
 	{
 		if (image == null || image.IsEmpty())
 		{

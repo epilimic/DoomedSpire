@@ -151,6 +151,13 @@ internal sealed class DoomView
 	{
 		try
 		{
+			if (starting)
+			{
+				// a new game is still being got ready (the enemies are drawn first): carry on with it when it is, instead of starting a second one
+				startCancelled = false;
+				Say("Getting the enemies ready...");
+				return;
+			}
 			if (session != null)
 			{
 				HidePicker();
@@ -178,28 +185,59 @@ internal sealed class DoomView
 		}
 	}
 
-	/// <summary>Starts a new game from <paramref name="wad"/>, or from the built-in game when that is null. If it fails, says why, and offers the list again if there is one.</summary>
-	private void BeginGame(WadFile? wad, IReadOnlyList<WadFile> saved)
+	/// <summary>True while a new game is being got ready: the enemies are drawn over a number of frames, so starting is not instant.</summary>
+	private bool starting;
+	/// <summary>The popup was closed while the new game was being got ready: the game is made but not started until the popup is opened again.</summary>
+	private bool startCancelled;
+	/// <summary>Counts the times everything was thrown away (<see cref="Shutdown"/>), so a game that was being got ready then is dropped.</summary>
+	private int shutdowns;
+
+	/// <summary>
+	/// Starts a new game from <paramref name="wad"/>, or from the built-in game when that is null. The enemies are drawn first (shareware game only; this takes a
+	/// moment over several frames), then the game starts. If it fails, says why, and offers the list again if there is one.
+	/// </summary>
+	private async void BeginGame(WadFile? wad, IReadOnlyList<WadFile> saved)
 	{
+		if (starting)
+		{
+			return;
+		}
 		HidePicker();
 		var label = wad?.Name ?? BuiltInWad.Label;
+		starting = true;
+		startCancelled = false;
+		var shutdownsAtStart = shutdowns;
 		try
 		{
 			var timer = Stopwatch.StartNew();
 			var path = wad?.Path ?? BuiltInWad.EnsureOnDisk();
 			var dataReady = timer.ElapsedMilliseconds;
+			var dataFolder = Path.Combine(BuiltInWad.DataFolder, "data");
 			// The character's face for the status bar, as an add-on WAD (null keeps Doomguy). Made here, each new game, from the current tuning.
-			var faces = PlayerFace.TryBuild(path, Path.Combine(BuiltInWad.DataFolder, "data"));
-			var game = DoomSession.Create(path, new AudioOptions { OpenSoundFont = SoundFontData.Open, Report = ReportAudioProblem }, faces == null ? null : new[] { faces });
+			var faces = PlayerFace.TryBuild(path, dataFolder);
+			// Slay the Spire enemies for DOOM's monsters, as another add-on WAD (null keeps DOOM's own). Only for the shareware game.
+			Say("Getting the enemies ready...");
+			var enemies = await EnemySprites.TryBuildAsync(screen, path, dataFolder);
+			if (shutdowns != shutdownsAtStart || !GodotObject.IsInstanceValid(screen))
+			{
+				return; // everything was thrown away while this was going on
+			}
+			var addOns = new List<string>();
+			if (faces != null) addOns.Add(faces);
+			if (enemies != null) addOns.Add(enemies);
+			var game = DoomSession.Create(path, new AudioOptions { OpenSoundFont = SoundFontData.Open, Report = ReportAudioProblem }, addOns.Count == 0 ? null : addOns);
 			session = game;
 			rgba = new byte[game.Width * game.Height * 4];
 			image = Image.CreateFromData(game.Width, game.Height, false, Image.Format.Rgba8, rgba);
 			texture = ImageTexture.CreateFromImage(image);
 			picture.Texture = texture;
 			message.Visible = false;
-			Activate(game);
+			if (!startCancelled)
+			{
+				Activate(game);
+			}
 			ModLog.Info("game", $"new game: {label} ({game.Width}x{game.Height}) in {timer.ElapsedMilliseconds} ms " +
-				$"(game data ready after {dataReady} ms; {game.LoadedSoundCount} sounds, music {(game.HasMusic ? "on" : "off")})");
+				$"(game data ready after {dataReady} ms; {game.LoadedSoundCount} sounds, music {(game.HasMusic ? "on" : "off")}{(startCancelled ? "; the popup was closed meanwhile, so it waits paused" : "")})");
 		}
 		catch (Exception e)
 		{
@@ -214,6 +252,10 @@ internal sealed class DoomView
 			{
 				Say(problem);
 			}
+		}
+		finally
+		{
+			starting = false;
 		}
 	}
 
@@ -270,6 +312,10 @@ internal sealed class DoomView
 	/// </summary>
 	public void Suspend()
 	{
+		if (starting)
+		{
+			startCancelled = true;
+		}
 		Deactivate();
 		HidePicker();
 		if (endGame)
@@ -282,6 +328,7 @@ internal sealed class DoomView
 	/// <summary>The end of everything: the run is over (the map screen is gone), or something failed. Switches off and throws the game away.</summary>
 	public void Shutdown()
 	{
+		shutdowns++;
 		Deactivate();
 		HidePicker();
 		DisposeGame();
