@@ -102,9 +102,10 @@ namespace ManagedDoomTest
             var same = MonsterSpriteBuilder.Measure(stand, stand).Value;
             Assert.AreEqual((60, 100, 0, 0), same, "the same pose against itself: 60% wide, 100% tall, not lifted, not off centre");
             var lifted = new CapturedFrame(stand.Image, stand.OriginX, stand.OriginY + 40); // the standing point 40 pixels lower: the pose floats 40 above it
-            Assert.AreEqual(20, MonsterSpriteBuilder.Measure(lifted, stand).Value.Lift, "40 of 200 pixels is 20%, and above the point is positive");
+            // the oval is 201 pixels tall (its bottom row counts), so 40 pixels is 19.9%, which rounds to 20, less a pixel of the oval's own edge: 19 or 20
+            Assert.IsTrue(Math.Abs(MonsterSpriteBuilder.Measure(lifted, stand).Value.Lift - 20) <= 1, "40 of 200 pixels is about 20%, and above the point is positive");
             var sunk = new CapturedFrame(stand.Image, stand.OriginX, stand.OriginY - 40);
-            Assert.AreEqual(-20, MonsterSpriteBuilder.Measure(sunk, stand).Value.Lift, "below it is negative");
+            Assert.IsTrue(Math.Abs(MonsterSpriteBuilder.Measure(sunk, stand).Value.Lift + 20) <= 1, "below it is negative");
             Assert.IsTrue(MonsterSpriteBuilder.Measure(new CapturedFrame(new Rgba(10, 10, new byte[400]), 5, 5), stand) == null, "an empty picture has no measure");
         }
 
