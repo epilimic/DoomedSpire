@@ -440,5 +440,23 @@ namespace ManagedDoomTest
                 Assert.IsTrue(message.Contains("wide") && message.Contains(sheet.Width.ToString()) || message.Contains("must be"), "the message says what size it should be: " + message);
             }
         }
+
+        [TestMethod]
+        public void WritesTheOriginalDoomguySheetsToLookAt()
+        {
+            // The game's own 42 faces, in the same layout as the sheet the mod writes for painting, so the two can be compared. Written to out/, which is git-ignored:
+            // they are id Software's art, so they are made when asked for and not kept in the repo.
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
+                var original = FaceFactory.Faces.Select(f => (f.Name, wad.ReadLump(f.Name))).ToList();
+                Directory.CreateDirectory("out");
+                var big = FaceFactory.Sheet(original, palette, 6);
+                Png.Save("out/doomguy-faces-preview.png", big.Width, big.Height, big.Data);
+                var plain = FaceFactory.Sheet(original, palette, 1, transparentBackground: true);
+                Png.Save("out/doomguy-faces-1x.png", plain.Width, plain.Height, plain.Data);
+                Assert.AreEqual(34 * 8 + 8, plain.Width);
+            }
+        }
     }
 }
