@@ -102,7 +102,7 @@ Decided by the owner:
 2. Popup is an **in-game panel**.
 3. A **button** on the map screen for now; a hotkey maybe later.
 4. **Freedoom** is the WAD.
-5. **Sound, music and mouse** now; **controller later**. Mouse, as built in piece 5: the cursor stays free (never captured); any sideways movement of it, anywhere on the screen while DOOM is open, turns the player, left click fires, right click uses (Space also uses); WASD walks and strafes, the mouse never walks. Every key stays in DOOM; Esc leaves DOOM and returns to the map screen; the backtick key is DOOM's own Esc (its menu).
+5. **Sound, music and mouse** now; **controller later**. Mouse, as built in piece 5: the cursor stays free (never captured); while DOOM is open it acts as if DOOM were fullscreen: any sideways movement of it, anywhere on the screen, turns the player, and nothing else in the game can be clicked (the popup is on its own high canvas layer), left click fires and right click uses, from anywhere on the screen (Space also uses); WASD walks and strafes, the mouse never walks. Every key stays in DOOM; Esc leaves DOOM and returns to the map screen; the backtick key is DOOM's own Esc (its menu).
 6. **Publish eventually**, everything public when the time comes; **private until then**.
 7. **`main` only**: first commit on `main`, stay on `main`, the `claude/...` branch is to be deleted.
 8. DOOM's enemies are replaced with **STS enemies**, **randomly, one act per level** (section 5).

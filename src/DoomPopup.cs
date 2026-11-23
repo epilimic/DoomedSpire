@@ -13,6 +13,14 @@ internal static class DoomPopup
 {
 	private const string ButtonName = "DoomedSpireButton";
 	private const string PopupName = "DoomedSpirePopup";
+	private const string LayerName = "DoomedSpireLayer";
+
+	/// <summary>
+	/// The popup lives on its own canvas layer so it is drawn above, and takes the mouse before, everything else in the game, including the top bar
+	/// and relic bar (they sit in the same container as the map screen and some are drawn above it). The game's own layers: everything is on the
+	/// default layer 0 except the dev console on 10 (scenes/debug/dev_console.tscn), which cannot open while DOOM runs.
+	/// </summary>
+	private const int PopupLayer = 8;
 
 	public static void AttachTo(NMapScreen map)
 	{
@@ -22,7 +30,7 @@ internal static class DoomPopup
 			return;
 		}
 
-		var popup = BuildPopup(out var closeButton, out var view);
+		var popup = BuildPopup(out var closeButton, out var view, out var layer);
 		var button = BuildButton();
 
 		void SetOpen(bool open)
@@ -51,7 +59,7 @@ internal static class DoomPopup
 		map.Closed += () => ModLog.Try("map", "closing the popup with the map", () => SetOpen(false));
 
 		map.AddChildSafely(button);
-		map.AddChildSafely(popup);
+		map.AddChildSafely(layer);
 		ModLog.Info("map", "DOOM button added to the map screen");
 	}
 
@@ -78,19 +86,26 @@ internal static class DoomPopup
 		return button;
 	}
 
-	/// <summary>A dimmed backdrop that swallows clicks (so the map underneath cannot be dragged) and a centred panel with a title, a Close button and a 4:3 area for the picture.</summary>
-	private static Control BuildPopup(out Button closeButton, out DoomView view)
+	/// <summary>
+	/// A full-screen dimmed backdrop and a centred panel with a title, a Close button and a 4:3 area for the picture, all on a high canvas layer.
+	/// The full-screen root is the only thing that takes mouse events (everything inside it ignores the mouse, except the Close button, which
+	/// DoomView hides while a game runs), so a click anywhere on the screen lands on the root and nothing else in the game can be clicked.
+	/// </summary>
+	private static Control BuildPopup(out Button closeButton, out DoomView view, out CanvasLayer layer)
 	{
+		layer = new CanvasLayer { Name = LayerName, Layer = PopupLayer };
+
 		var root = new Control { Name = PopupName, Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
 		root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+		layer.AddChild(root);
 
-		var dim = new ColorRect { Color = new Color(0f, 0f, 0f, 0.65f), MouseFilter = Control.MouseFilterEnum.Stop };
+		var dim = new ColorRect { Color = new Color(0f, 0f, 0f, 0.65f), MouseFilter = Control.MouseFilterEnum.Ignore };
 		dim.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		root.AddChild(dim);
 
 		var panel = new PanelContainer
 		{
-			MouseFilter = Control.MouseFilterEnum.Stop,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
 			AnchorLeft = 0.5f,
 			AnchorTop = 0.5f,
 			AnchorRight = 0.5f,
@@ -102,19 +117,19 @@ internal static class DoomPopup
 		};
 		root.AddChild(panel);
 
-		var margin = new MarginContainer();
+		var margin = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
 		foreach (var side in new[] { "margin_left", "margin_top", "margin_right", "margin_bottom" })
 		{
 			margin.AddThemeConstantOverride(side, 16);
 		}
 		panel.AddChild(margin);
 
-		var box = new VBoxContainer();
+		var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
 		margin.AddChild(box);
 
-		var header = new HBoxContainer();
+		var header = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
 		box.AddChild(header);
-		header.AddChild(new Label { Text = "Doomed Spire", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+		header.AddChild(new Label { Text = "Doomed Spire", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
 		closeButton = new Button { Text = "Close", FocusMode = Control.FocusModeEnum.None };
 		header.AddChild(closeButton);
 
@@ -123,10 +138,11 @@ internal static class DoomPopup
 			Color = Colors.Black,
 			CustomMinimumSize = new Vector2(800, 600), // 4:3
 			SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};
 		box.AddChild(screen);
 
-		view = new DoomView(screen);
+		view = new DoomView(screen, root, closeButton);
 
 		return root;
 	}
