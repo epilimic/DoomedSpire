@@ -37,7 +37,7 @@ namespace MeltySynth
                     case "smpl":
                         bitsPerSample = 16;
                         samples = new short[size / 2];
-                        reader.Read(MemoryMarshal.Cast<short, byte>(samples));
+                        reader.Read(MemoryMarshal.Cast<short, byte>(samples.AsSpan()));
                         break;
                     case "sm24":
                         // 24 bit audio is not supported.
