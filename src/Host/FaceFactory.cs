@@ -111,12 +111,20 @@ internal static class FaceFactory
 		{
 			var shaded = Shade(baseImage, kind, pain, settings);
 			var s = spec(name);
+			if (kind == FaceKind.Straight1 || kind == FaceKind.Straight2)
+			{
+				// the glances slide what is inside the head a little to one side and leave its outline where it is (moving the whole head would cut a column off
+				// the side it moves toward, the straight faces have no spare room)
+				var glanced = Quantize(TurnHead(shaded, kind == FaceKind.Straight1 ? -GlanceAmount : GlanceAmount, reference, s), palette);
+				lumps.Add((name, DoomPatch.Encode(s.Width, s.Height, s.Left, s.Top, glanced)));
+				continue;
+			}
 			if (kind == FaceKind.TurnLeft || kind == FaceKind.TurnRight)
 			{
 				// The turned head is drawn straight into the turn-left lump's own rectangle (wider than the straight faces, to hold the turned head). The turn right
 				// is that very face mirrored about the middle of the head, then cut to the turn-right lump's rectangle.
 				var leftSpec = kind == FaceKind.TurnLeft ? s : spec("STFTL" + pain + "0");
-				var turned = TurnHead(shaded, reference, leftSpec);
+				var turned = TurnHead(shaded, TurnAmount, reference, leftSpec);
 				var image = kind == FaceKind.TurnLeft ? turned : Mirror(turned, reference, leftSpec, s);
 				lumps.Add((name, DoomPatch.Encode(s.Width, s.Height, s.Left, s.Top, Quantize(image, palette))));
 				continue;
@@ -143,15 +151,13 @@ internal static class FaceFactory
 	}
 
 	/// <summary>
-	/// How far each look moves the face, in pixels (the turns are not shifted: <see cref="TurnHead"/> turns the head). The straight looks have no spare room, so
-	/// they shuffle one pixel and lose at most one pixel column at the edge, which on a round face is mostly outline.
+	/// How far a look moves the face, in pixels: only "ouch" moves it (up one pixel; its lump has the room). The glances and the turns slide what is inside the head
+	/// (<see cref="TurnHead"/>) and leave its outline, so no column of the head is ever cut off.
 	/// </summary>
 	private static (int Dx, int Dy) LookShift(FaceKind kind, int roomLeft, int roomRight)
 	{
 		switch (kind)
 		{
-			case FaceKind.Straight1: return (-1, 0);
-			case FaceKind.Straight2: return (1, 0);
 			case FaceKind.Ouch: return (0, -1);
 			default: return (0, 0);
 		}
@@ -345,6 +351,9 @@ internal static class FaceFactory
 		return pixels;
 	}
 
+	/// <summary>How far the features slide in the two glancing faces (columns 2 and 3): about a pixel, as a fraction of half the head's width.</summary>
+	private const double GlanceAmount = 0.1;
+
 	/// <summary>How far the features of the turning faces move toward the side they turn to, as a fraction of half the head's width (0 = not at all, 0.5 = the most possible).</summary>
 	private const double TurnAmount = 0.35;
 
@@ -353,10 +362,10 @@ internal static class FaceFactory
 	/// it slides to the right: the features move over, the far side is squeezed and the near side stretched (across the head, a position
 	/// <c>u</c> from -1 to 1 goes to <c>u + d (1 - u squared)</c>, which moves the middle by <c>d</c> and leaves both edges where they are). The rows stay where they are.
 	/// </summary>
-	private static Image TurnHead(Image face, PatchSpec reference, PatchSpec lump)
+	private static Image TurnHead(Image face, double amount, PatchSpec reference, PatchSpec lump)
 	{
 		var result = new Image(lump.Width, lump.Height);
-		var d = TurnAmount;
+		var d = amount;
 		var half = face.Width / 2.0;
 		const int samples = 4; // across each output pixel, averaged so squeezed columns do not look ragged
 		for (var py = 0; py < lump.Height; py++)

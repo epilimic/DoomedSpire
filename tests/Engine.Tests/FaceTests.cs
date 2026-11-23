@@ -230,7 +230,7 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
-        public void TurningFacesTurnTheHeadTowardTheirSideAndStraightLooksLoseAtMostAColumnOfEdge()
+        public void TurningFacesTurnTheHeadTowardTheirSideAndGlancesCutNothingOff()
         {
             var (faces, palette, _, wad) = Setup(FaceSettings.Default with { Damage = 0f, Blood = 0f });
             using (wad)
@@ -252,10 +252,16 @@ namespace ManagedDoomTest
                     Assert.IsFalse(double.IsNaN(eyes), "the test portrait's eyes are found");
                     Assert.IsTrue(EyeColumn(left, palette) > eyes + 1.5, $"level {level}: the turn-left picture has the eyes slid right ({eyes:0.0} to {EyeColumn(left, palette):0.0})");
                     Assert.IsTrue(EyeColumn(right, palette) < eyes - 1.5, $"level {level}: and the turn-right picture, its mirror, has them slid left ({eyes:0.0} to {EyeColumn(right, palette):0.0})");
-                    foreach (var look in new[] { "STFST" + level + "1", "STFST" + level + "2" })
+                    // the glances do not cut anything off: the same columns of the screen are covered as by the straight face, and the eyes have moved a little
+                    var straightColumns = OnScreen(straight).Keys.Select(k => k.U).Distinct().OrderBy(u => u).ToList();
+                    foreach (var (look, direction) in new[] { ("STFST" + level + "1", -1), ("STFST" + level + "2", 1) })
                     {
-                        var shown = OnScreen(Lump(faces, look)).Count;
-                        Assert.IsTrue(whole - shown >= 0 && whole - shown <= 20, $"{look} loses {whole - shown} pixels of {whole}: at most one column of the edge");
+                        var glance = Lump(faces, look);
+                        var shown = OnScreen(glance).Count;
+                        Assert.IsTrue(Math.Abs(whole - shown) <= 6, $"{look} covers {shown} pixels, the straight face {whole}");
+                        Assert.IsTrue(OnScreen(glance).Keys.Select(k => k.U).Distinct().OrderBy(u => u).SequenceEqual(straightColumns), $"{look} keeps the head's whole width: nothing cut off on either side");
+                        var moved = EyeColumn(glance, palette) - eyes;
+                        Assert.IsTrue(direction * moved > 0.3 && direction * moved < 2.5, $"{look}: the eyes move about a pixel the way it looks ({moved:0.0})");
                     }
                 }
             }
