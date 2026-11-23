@@ -7,6 +7,54 @@ namespace ManagedDoomTest
 {
     public static class Png
     {
+        /// <summary>Reads an 8-bit RGBA PNG without interlacing (what the game's editor and this repo's pictures are): width, height, and 4 bytes a pixel.</summary>
+        public static (int Width, int Height, byte[] Rgba) Load(string path)
+        {
+            var bytes = File.ReadAllBytes(path);
+            int width = 0, height = 0, position = 8;
+            var data = new MemoryStream();
+            while (position < bytes.Length)
+            {
+                var length = (bytes[position] << 24) | (bytes[position + 1] << 16) | (bytes[position + 2] << 8) | bytes[position + 3];
+                var type = System.Text.Encoding.ASCII.GetString(bytes, position + 4, 4);
+                if (type == "IHDR")
+                {
+                    width = (bytes[position + 8] << 24) | (bytes[position + 9] << 16) | (bytes[position + 10] << 8) | bytes[position + 11];
+                    height = (bytes[position + 12] << 24) | (bytes[position + 13] << 16) | (bytes[position + 14] << 8) | bytes[position + 15];
+                    if (bytes[position + 16] != 8 || bytes[position + 17] != 6 || bytes[position + 20] != 0) throw new NotSupportedException("only 8-bit RGBA without interlacing");
+                }
+                else if (type == "IDAT") data.Write(bytes, position + 8, length);
+                position += 12 + length;
+            }
+            data.Position = 0;
+            var raw = new MemoryStream();
+            using (var z = new ZLibStream(data, CompressionMode.Decompress)) z.CopyTo(raw);
+            var source = raw.ToArray();
+            var stride = width * 4;
+            var rgba = new byte[height * stride];
+            for (var y = 0; y < height; y++)
+            {
+                var filter = source[y * (stride + 1)];
+                for (var x = 0; x < stride; x++)
+                {
+                    int a = x >= 4 ? rgba[y * stride + x - 4] : 0, b = y > 0 ? rgba[(y - 1) * stride + x] : 0, c = x >= 4 && y > 0 ? rgba[(y - 1) * stride + x - 4] : 0;
+                    int value = source[y * (stride + 1) + 1 + x], add;
+                    switch (filter)
+                    {
+                        case 1: add = a; break;
+                        case 2: add = b; break;
+                        case 3: add = (a + b) / 2; break;
+                        case 4:
+                            int p = a + b - c, pa = Math.Abs(p - a), pb = Math.Abs(p - b), pc = Math.Abs(p - c);
+                            add = pa <= pb && pa <= pc ? a : pb <= pc ? b : c; break;
+                        default: add = 0; break;
+                    }
+                    rgba[y * stride + x] = (byte)(value + add);
+                }
+            }
+            return (width, height, rgba);
+        }
+
         public static void Save(string path, int width, int height, byte[] rgba)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));

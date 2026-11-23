@@ -91,6 +91,17 @@ internal static class FaceFactory
 		return list;
 	}
 
+	/// <summary>
+	/// The size and corner a face lump is made with. The game's own straight faces are exactly as wide as the head, so a head that looks to one side (moved
+	/// a pixel) would lose a column of itself at the edge it moves toward. So the two glances (STFST<i>n</i>1 and STFST<i>n</i>2) are made one pixel wider on each
+	/// side than the game's; the picture is drawn in the same place on the screen. Used when the faces are made and when a painted sheet is read.
+	/// </summary>
+	public static PatchSpec LumpSpec(string name, PatchSpec original)
+	{
+		var glance = name.Length == 7 && name.StartsWith("STFST", StringComparison.Ordinal) && (name[6] == '1' || name[6] == '2');
+		return glance ? new PatchSpec(original.Width + 2, original.Height, original.Left + 1, original.Top) : original;
+	}
+
 	/// <summary>The lump whose size and corner define the "canonical" face: the normal straight-ahead look at full health.</summary>
 	private const string ReferenceFace = "STFST00";
 
@@ -110,15 +121,7 @@ internal static class FaceFactory
 		foreach (var (name, kind, pain) in Faces)
 		{
 			var shaded = Shade(baseImage, kind, pain, settings);
-			var s = spec(name);
-			if (kind == FaceKind.Straight1 || kind == FaceKind.Straight2)
-			{
-				// the glances slide what is inside the head a little to one side and leave its outline where it is (moving the whole head would cut a column off
-				// the side it moves toward, the straight faces have no spare room)
-				var glanced = Quantize(TurnHead(shaded, kind == FaceKind.Straight1 ? -GlanceAmount : GlanceAmount, reference, s), palette);
-				lumps.Add((name, DoomPatch.Encode(s.Width, s.Height, s.Left, s.Top, glanced)));
-				continue;
-			}
+			var s = LumpSpec(name, spec(name));
 			if (kind == FaceKind.TurnLeft || kind == FaceKind.TurnRight)
 			{
 				// The turned head is drawn straight into the turn-left lump's own rectangle (wider than the straight faces, to hold the turned head). The turn right
@@ -151,13 +154,16 @@ internal static class FaceFactory
 	}
 
 	/// <summary>
-	/// How far a look moves the face, in pixels: only "ouch" moves it (up one pixel; its lump has the room). The glances and the turns slide what is inside the head
-	/// (<see cref="TurnHead"/>) and leave its outline, so no column of the head is ever cut off.
+	/// How far a look moves the face, in pixels: the glances move the whole head one pixel to the side (their lumps are made two pixels wider than the game's, see
+	/// <see cref="LumpSpec"/>, so no column of the head is cut off) and "ouch" moves it up one (its lump has the room). The turns slide what is inside the head
+	/// (<see cref="TurnHead"/>) and leave its outline.
 	/// </summary>
 	private static (int Dx, int Dy) LookShift(FaceKind kind, int roomLeft, int roomRight)
 	{
 		switch (kind)
 		{
+			case FaceKind.Straight1: return (-1, 0);
+			case FaceKind.Straight2: return (1, 0);
 			case FaceKind.Ouch: return (0, -1);
 			default: return (0, 0);
 		}
@@ -350,9 +356,6 @@ internal static class FaceFactory
 		}
 		return pixels;
 	}
-
-	/// <summary>How far the features slide in the two glancing faces (columns 2 and 3): about a pixel, as a fraction of half the head's width.</summary>
-	private const double GlanceAmount = 0.1;
 
 	/// <summary>How far the features of the turning faces move toward the side they turn to, as a fraction of half the head's width (0 = not at all, 0.5 = the most possible).</summary>
 	private const double TurnAmount = 0.35;
@@ -575,7 +578,7 @@ internal static class FaceSheetImport
 			for (var col = 0; col < rows[row].Count; col++)
 			{
 				var name = rows[row][col];
-				var s = spec(name);
+				var s = FaceFactory.LumpSpec(name, spec(name));
 				var pixels = new int[s.Width * s.Height];
 				for (var py = 0; py < s.Height; py++)
 				{

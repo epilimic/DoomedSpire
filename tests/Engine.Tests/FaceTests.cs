@@ -138,7 +138,9 @@ namespace ManagedDoomTest
                     Assert.IsTrue(wad.GetLumpNumber(name) != -1, name + " is not a lump the game has: the list of names is wrong");
                     var original = Patch.FromWad(wad, name);
                     var ours = Patch.FromData(name, data);
-                    Assert.AreEqual((original.Width, original.Height, original.LeftOffset, original.TopOffset), (ours.Width, ours.Height, ours.LeftOffset, ours.TopOffset), name);
+                    // at the game's own size, except the two glances, which are a pixel wider each side so that a head moved a pixel is not cut off
+                    var wanted = FaceFactory.LumpSpec(name, new PatchSpec(original.Width, original.Height, original.LeftOffset, original.TopOffset));
+                    Assert.AreEqual((wanted.Width, wanted.Height, wanted.Left, wanted.Top), (ours.Width, ours.Height, ours.LeftOffset, ours.TopOffset), name);
                 }
                 // and the other way: every face the game draws (the engine's own list, StatusBarRenderer.cs:461-475) is one of ours
                 var drawn = new List<string>();
@@ -252,16 +254,16 @@ namespace ManagedDoomTest
                     Assert.IsFalse(double.IsNaN(eyes), "the test portrait's eyes are found");
                     Assert.IsTrue(EyeColumn(left, palette) > eyes + 1.5, $"level {level}: the turn-left picture has the eyes slid right ({eyes:0.0} to {EyeColumn(left, palette):0.0})");
                     Assert.IsTrue(EyeColumn(right, palette) < eyes - 1.5, $"level {level}: and the turn-right picture, its mirror, has them slid left ({eyes:0.0} to {EyeColumn(right, palette):0.0})");
-                    // the glances do not cut anything off: the same columns of the screen are covered as by the straight face, and the eyes have moved a little
-                    var straightColumns = OnScreen(straight).Keys.Select(k => k.U).Distinct().OrderBy(u => u).ToList();
+                    // the glances move the whole head one pixel to the side and cut nothing off: the same number of pixels, the same shape, one column over
+                    var straightMap = OnScreen(straight);
                     foreach (var (look, direction) in new[] { ("STFST" + level + "1", -1), ("STFST" + level + "2", 1) })
                     {
                         var glance = Lump(faces, look);
-                        var shown = OnScreen(glance).Count;
-                        Assert.IsTrue(Math.Abs(whole - shown) <= 6, $"{look} covers {shown} pixels, the straight face {whole}");
-                        Assert.IsTrue(OnScreen(glance).Keys.Select(k => k.U).Distinct().OrderBy(u => u).SequenceEqual(straightColumns), $"{look} keeps the head's whole width: nothing cut off on either side");
+                        var glanceMap = OnScreen(glance);
+                        Assert.AreEqual(whole, glanceMap.Count, $"{look} has all {whole} pixels of the head");
+                        Assert.IsTrue(straightMap.All(kv => glanceMap.TryGetValue((kv.Key.U + direction, kv.Key.V), out var c) && c == kv.Value), $"{look} is the straight face moved one pixel {(direction < 0 ? "left" : "right")}, unchanged");
                         var moved = EyeColumn(glance, palette) - eyes;
-                        Assert.IsTrue(direction * moved > 0.3 && direction * moved < 2.5, $"{look}: the eyes move about a pixel the way it looks ({moved:0.0})");
+                        Assert.IsTrue(direction * moved > 0.8 && direction * moved < 1.2, $"{look}: the eyes are a pixel over ({moved:0.0})");
                     }
                 }
             }
@@ -522,6 +524,48 @@ namespace ManagedDoomTest
                 Assert.IsTrue(message.Contains("wide") && message.Contains(sheet.Width.ToString()) || message.Contains("must be"), "the message says what size it should be: " + message);
             }
         }
+
+        [TestMethod]
+        public void ThePaintedFacesInTheRepoAreWholeAndReadBackWithNothingCutOff()
+        {
+            var folder = Path.GetFullPath("../../assets");
+            var sheets = Directory.GetFiles(folder, "*-faces.png");
+            Assert.IsTrue(sheets.Length >= 6, "a painted sheet for each of the six characters");
+            var (spec, palette, wad) = (default(Func<string, PatchSpec>), default(DoomPalette), new Wad(WadPath.Doom1Shareware));
+            using (wad)
+            {
+                palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
+                spec = name => { var p = Patch.FromWad(wad, name); return new PatchSpec(p.Width, p.Height, p.LeftOffset, p.TopOffset); };
+                foreach (var path in sheets)
+                {
+                    var (width, height, data) = Png.Load(path);
+                    Assert.AreEqual((280, 218), (width, height), Path.GetFileName(path) + " is the size of a face sheet");
+                    bool Opaque(int row, int col, int u, int v) => data[4 * ((FaceFactory.SheetMargin + row * FaceFactory.SheetCellHeight + v) * width + FaceFactory.SheetMargin + col * FaceFactory.SheetCellWidth + u) + 3] >= 128;
+                    var imported = FaceSheetImport.Read(new Rgba(width, height, data), spec, palette).ToDictionary(l => l.Name, l => l.Data);
+                    for (var row = 0; row < 5; row++)
+                    {
+                        int[] Extent(int col)
+                        {
+                            var us = Enumerable.Range(0, FaceFactory.SheetCellWidth).Where(u => Enumerable.Range(0, FaceFactory.SheetCellHeight).Any(v => Opaque(row, col, u, v))).ToArray();
+                            return new[] { us.Min(), us.Max() };
+                        }
+                        var straight = Extent(0);
+                        // the head that looks left is the straight head moved one pixel left, whole: not a column narrower
+                        CollectionAssertEqual(new[] { straight[0] - 1, straight[1] - 1 }, Extent(1), $"{Path.GetFileName(path)} row {row}: the face that looks left");
+                        CollectionAssertEqual(new[] { straight[0] + 1, straight[1] + 1 }, Extent(2), $"{Path.GetFileName(path)} row {row}: the face that looks right");
+                        // and what the engine reads back has every painted pixel of the cell (nothing falls outside the lump)
+                        for (var col = 0; col < 3; col++)
+                        {
+                            var painted = Enumerable.Range(0, FaceFactory.SheetCellWidth).Sum(u => Enumerable.Range(0, FaceFactory.SheetCellHeight).Count(v => Opaque(row, col, u, v)));
+                            var read = OnScreen(imported["STFST" + row + col]).Count;
+                            Assert.AreEqual(painted, read, $"{Path.GetFileName(path)} row {row} column {col + 1}: the lump holds all of the painted face");
+                        }
+                    }
+                }
+            }
+        }
+
+        private static void CollectionAssertEqual(int[] expected, int[] actual, string message) => Assert.IsTrue(expected.SequenceEqual(actual), $"{message}: expected {string.Join("..", expected)}, got {string.Join("..", actual)}");
 
         [TestMethod]
         public void WritesTheOriginalDoomguySheetsToLookAt()
