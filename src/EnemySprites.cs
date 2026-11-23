@@ -28,7 +28,7 @@ internal static class EnemySprites
 	private static readonly MobjType[] Replaced = { MobjType.Troop };
 
 	/// <summary>Builds the add-on WAD of enemy pictures into <paramref name="folder"/> and returns its path, or null (the log says why) to keep DOOM's own monsters.</summary>
-	public static async Task<string?> TryBuildAsync(Node host, string iwadPath, string folder)
+	public static async Task<string?> TryBuildAsync(Godot.Node host, string iwadPath, string folder)
 	{
 		try
 		{
