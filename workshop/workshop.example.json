@@ -1,0 +1,13 @@
+{
+  "title": "EDIT BY HAND: title shown on the Workshop page",
+  "description": "EDIT BY HAND: the Workshop page text. No session writes or edits this.",
+  "visibility": "private",
+  "changeNote": "EDIT BY HAND before every upload. No session writes or edits this.",
+  "tags": [],
+  "dependencies": null,
+  "contentDescriptors": null,
+  "minBranch": null,
+  "maxBranch": null,
+  "_REFERENCE_visibility_options": ["private", "public", "unlisted", "friends_only"],
+  "_REFERENCE_tag_options": ["Acts", "Ancients", "Audio", "Cards", "Characters", "Cosmetics", "Events", "Expansion", "Extensions", "Humor", "Modifiers", "Monsters", "Potions", "QoL", "Relics", "Rooms", "Tools & APIs", "Utility", "Misc"]
+}

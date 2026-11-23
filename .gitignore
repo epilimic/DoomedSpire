@@ -1,0 +1,29 @@
+# build output
+bin/
+obj/
+publish/
+.godot/
+# editors and OS
+.idea/
+.vs/
+.DS_Store
+*.user
+*.bak
+Properties/
+packages/
+# your machine's paths (game folder, Godot)
+Directory.Build.props
+# secrets
+.env
+.env.*
+# the uploader writes this next to wherever you run it
+mod-uploader.log
+# Workshop upload files are built output (written by dotnet publish)
+workshop/content/*
+!workshop/content/.gitkeep
+# the owner's hand-edited Workshop text (created once from workshop.example.json)
+workshop/workshop.json
+# Godot .uid files are NOT ignored: Godot 4.4+ writes one next to every script and resource, and they are meant to be committed (they keep references stable).
+# tools
+__pycache__/
+work/

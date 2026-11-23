@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Blocks a commit that contains secrets. Enable once per clone:  git config core.hooksPath .githooks
+# A repo with its own extra scanner at tools/secret-scan.sh (SlayTheScissors) gets it run as well; no per-repo edit of this file.
+root="$(git rev-parse --show-toplevel)"
+python3 -I "$root/.githooks/secret-scan.py" --staged || exit 1
+if [ -x "$root/tools/secret-scan.sh" ]; then "$root/tools/secret-scan.sh" --staged || exit 1; fi

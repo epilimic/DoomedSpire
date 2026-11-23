@@ -1,0 +1,7 @@
+<!-- Copy to Directory.Build.props (git-ignored) only if the game is NOT where Sts2PathDiscovery.props looks.
+     Linux default there: ~/.local/share/Steam/steamapps/common/Slay the Spire 2. The owner's library is elsewhere, so this file is needed on the owner's machine. -->
+<Project>
+  <PropertyGroup>
+    <Sts2Path>/mnt/stuff/SteamLibrary/steamapps/common/Slay the Spire 2</Sts2Path>
+  </PropertyGroup>
+</Project>

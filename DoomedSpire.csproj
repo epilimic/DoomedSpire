@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- TEMPLATE, NOT COMPILED. Same ideas as BingBongBuddy.csproj (known to build), with the game paths coming from Sts2PathDiscovery.props.
+       Your own paths go in Directory.Build.props (git-ignored; MSBuild loads it by itself, before this file). -->
+  <Import Project="Sts2PathDiscovery.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>DoomedSpire</AssemblyName>
+    <RootNamespace>DoomedSpire</RootNamespace>
+    <!-- No <Version> here on purpose: the version lives only in DoomedSpire.json. bash workshop/versions.sh flags a <Version> that disagrees with it. -->
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <!-- Keeps your folder names out of the dll: the compiler records source and debug-file paths, and this rewrites them to relative ones
+         (the same two lines as the Godot-export build). workshop/scrub.py stops an upload if a path still gets through. -->
+    <AppOutputBase>$(MSBuildProjectDirectory)\</AppOutputBase>
+    <PathMap>$(AppOutputBase)=.\</PathMap>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <!-- The game's own assemblies. Private=false so they are NOT copied next to the mod's dll. Add Steamworks.NET.dll etc. only when the code needs them. -->
+  <ItemGroup>
+    <Reference Include="sts2"><HintPath>$(Sts2DataDir)/sts2.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="GodotSharp"><HintPath>$(Sts2DataDir)/GodotSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(Sts2DataDir)/0Harmony.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <!-- Files baked into the dll (keep the mod folder to the dll + manifest only: the game treats EVERY .json in a mod folder as a manifest). -->
+  <ItemGroup>
+    <!-- Pictures: put them in assets/ and uncomment (see solutions/embedded-art): <EmbeddedResource Include="assets/**/*.png;assets/**/*.webp" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" /> -->
+  </ItemGroup>
+
+  <Target Name="CheckSts2Paths" BeforeTargets="ResolveAssemblyReferences;CoreCompile">
+    <Error Condition="!Exists('$(Sts2DataDir)/sts2.dll')"
+           Text="Cannot find sts2.dll in '$(Sts2DataDir)'. Put Sts2Path (the game folder) in Directory.Build.props." />
+  </Target>
+
+  <!-- dotnet build AND dotnet publish both leave the mod installed in the game's mods folder. -->
+  <Target Name="InstallMod" AfterTargets="Build">
+    <MakeDir Directories="$(ModsPath)$(MSBuildProjectName)" />
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll;$(MSBuildProjectName).json" DestinationFolder="$(ModsPath)$(MSBuildProjectName)" />
+  </Target>
+
+  <!-- dotnet publish also stages exactly the two files a Workshop upload needs straight into workshop/content (nothing stale is left there). -->
+  <Target Name="StageWorkshop" AfterTargets="Publish" DependsOnTargets="InstallMod">
+    <ItemGroup>
+      <OldStaged Include="$(MSBuildProjectDirectory)/workshop/content/**/*" Exclude="$(MSBuildProjectDirectory)/workshop/content/.gitkeep" />
+    </ItemGroup>
+    <Delete Files="@(OldStaged)" />
+    <MakeDir Directories="$(MSBuildProjectDirectory)/workshop/content" />
+    <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll;$(MSBuildProjectName).json" DestinationFolder="$(MSBuildProjectDirectory)/workshop/content" />
+    <Message Importance="high" Text="Staged for the Workshop: workshop/content (dll + json). Next: bash workshop/upload.sh, or bash workshop/release.sh for the whole release." />
+  </Target>
+
+</Project>
