@@ -14,7 +14,7 @@ namespace ManagedDoomTest
         [TestMethod]
         public void FirstFrameOfEpisode1Map1IsARealPicture()
         {
-            using (var session = DoomSession.Create(WadPath.Doom1))
+            using (var session = DoomSession.Create(WadPath.Doom1Shareware))
             {
                 var rgba = new byte[session.Width * session.Height * 4];
                 session.RenderFirstFrame(rgba);
@@ -40,7 +40,7 @@ namespace ManagedDoomTest
         [TestMethod]
         public void TicksAdvanceTheGame()
         {
-            using (var session = DoomSession.Create(WadPath.Doom1))
+            using (var session = DoomSession.Create(WadPath.Doom1Shareware))
             {
                 var a = new byte[session.Width * session.Height * 4];
                 var b = new byte[a.Length];
@@ -55,7 +55,7 @@ namespace ManagedDoomTest
 
         private static DoomSession Started()
         {
-            var session = DoomSession.Create(WadPath.Doom1);
+            var session = DoomSession.Create(WadPath.Doom1Shareware);
             session.RenderFirstFrame(new byte[session.Width * session.Height * 4]);
             return session;
         }

@@ -45,7 +45,7 @@ All from `epilimic/sts2src` (commit `daf0fdb`, game v0.113.1):
 
 ## 5. WAD and the STS enemies
 
-**WAD: decided, Freedoom.** Freedoom is a free-content replacement for DOOM's data, made to be redistributed, so it can ship inside the dll (`solutions/embedded-art/` pattern). To check before the first public release (from memory, not read): its license terms (BSD-style) and that its sounds and music are covered by them too.
+**WAD: decided (revised): the shareware DOOM1.WAD is built in, and the player can load their own games from a folder** (see decision 4 in section 9). It was Freedoom at first; the owner preferred the original, which is freely distributable as shareware. Freedoom still works as a saved local game.
 
 **Enemies: decided, use Slay the Spire enemies instead of DOOM's.** What was found:
 
@@ -64,7 +64,7 @@ Open points:
 - **Mapping rule (decided): random, one act ("land") per level.** Each level picks one act, and every DOOM monster type in that level is assigned a random enemy **from that act only**, so Hive and Glory enemies never share a level. The act's enemy pool comes from the game itself, not from a list we keep: each act's `GenerateAllEncounters()` (`MegaCrit/Sts2/Core/Models/Acts/{Overgrowth,Underdocks,Hive,Glory}.cs`) names its encounters, and each encounter names its monsters (`index/catalog/encounters.md`). Pool sizes from a read of that data: **Overgrowth 29, Underdocks 22, Hive 26, Glory 23** distinct enemies, against about 20 DOOM monster types, so a level can nearly always give every monster type its own enemy. Not verified: that the encounter-to-monsters link can be read through the game's API at runtime (it may need an instance), and that every enemy in a pool has a usable visual scene.
 - **Defaults I would use unless told otherwise** (each is a one-line change): the act for each level is itself random; the draw is seeded by the run seed plus the level, so the same level looks the same every time you open it in a run; each enemy is scaled to its DOOM monster's size, whatever the enemy's own size is. A possible extra, not planned: matching tiers (elites for the tough DOOM monsters, an act boss for the DOOM bosses).
 - A quantized 256-colour version of STS art will look "retro" and may muddy. If it looks bad, the fallback is extending the renderer to draw RGBA sprites with a light tint. That is more work, so we try the palette route first.
-- Freedoom Phase 1 has four episodes, which happens to match the four acts. I believe that is right but have not checked it, nor that ManagedDoom reads Freedoom's files without changes.
+- The shareware game has one episode (9 levels), so the act is chosen for each level (random), as decided; if the player saves a full DOOM, its four episodes would match the four acts too.
 - Capturing from a viewport means a GPU read-back and the Spine animation names per enemy. Both are unverified until the game is running; step 5 below is where this gets proven.
 - Projectiles (fireballs) and the player weapons are not enemies, so they stay Freedoom's unless the owner asks otherwise.
 
@@ -101,7 +101,7 @@ Decided by the owner:
 1. Display name **Doomed Spire**; mod id **`DoomedSpire`** (published ids never change).
 2. Popup is an **in-game panel**.
 3. A **button** on the map screen for now; a hotkey maybe later.
-4. **Freedoom** is the WAD: Phase 1, version 0.13.0, embedded in the dll and written to the mod's data folder the first time DOOM opens (piece 6; see `assets/freedoom/README.md`).
+4. **The built-in game is the shareware DOOM1.WAD** (id's original, episode one: 9 levels, original graphics, sounds and MUS music), embedded unmodified in the dll and written to the mod's data folder the first time DOOM opens (assets/doom/README.md has its source, checksum and license). Freedoom is no longer shipped. **Local games:** any whole game (an IWAD) the player saves in the mod's `wads` folder (`user://DoomedSpire/wads/`, for example their registered DOOM.WAD, DOOM II or Freedoom) is offered in a short list when DOOM opens a new game; with none saved, DOOM just starts. The list is skipped when a paused game is resumed.
 5. **Sound, music and mouse** now (all built in pieces 5, 8 and 9: sound effects and MIDI music mixed in the mod and played through one Godot audio stream; DOOM follows the game's own master, sound effects and music volume settings); **controller later**. Mouse, as built in piece 5: while DOOM is open it acts as if DOOM were fullscreen: the mouse is captured (locked to the game window, cursor hidden, unlimited movement), any sideways movement turns the player with no stop at a screen edge, and nothing else in the game can be clicked (the popup is on its own high canvas layer), left click fires and right click uses, from anywhere on the screen (Space also uses); WASD walks and strafes, the mouse never walks. Every key stays in DOOM; Esc leaves DOOM and returns to the map screen; the backtick key is DOOM's own Esc (its menu).
 6. **Publish eventually**, everything public when the time comes; **private until then**.
 7. **`main` only**: first commit on `main`, stay on `main`, the `claude/...` branch is to be deleted.

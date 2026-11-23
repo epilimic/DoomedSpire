@@ -1,4 +1,4 @@
-// Replaces upstream's WadPath.cs. The upstream tests name the commercial WADs (DOOM.WAD, DOOM2.WAD, ...); here Freedoom stands in for them, because it is
+// Replaces upstream's WadPath.cs. The upstream tests name the commercial WADs (DOOM.WAD, DOOM2.WAD, ...); here Freedoom stands in for them (except DOOM1.WAD, the shareware game, which is in the repo), because it is
 // built as a drop-in replacement for DOOM2.WAD (freedoom2.wad) and DOOM.WAD (freedoom1.wad). Any WAD that is not available is a path to a file that does not
 // exist, so the test using it is reported as SKIPPED, not as failed.
 using System;
@@ -28,7 +28,8 @@ namespace ManagedDoomTest
             return "MISSING-" + fileName;
         }
 
-        public static readonly string Doom1Shareware = "MISSING-DOOM1.WAD";
+        // The one original DOOM we have: the shareware game that the mod ships, in the repo (assets/doom/doom1.wad).
+        public static readonly string Doom1Shareware = File.Exists("../../assets/doom/doom1.wad") ? Path.GetFullPath("../../assets/doom/doom1.wad") : "MISSING-DOOM1.WAD";
         public static readonly string Doom1 = Find("freedoom1.wad");
         public static readonly string Doom2 = Find("freedoom2.wad");
         public static readonly string Tnt = "MISSING-TNT.WAD";

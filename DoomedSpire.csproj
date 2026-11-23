@@ -34,9 +34,10 @@
   <!-- Files baked into the dll (keep the mod folder to the dll + manifest only: the game treats EVERY .json in a mod folder as a manifest). -->
   <ItemGroup>
     <!-- Pictures: put them in assets/ and uncomment (see solutions/embedded-art): <EmbeddedResource Include="assets/**/*.png;assets/**/*.webp" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" /> -->
-    <!-- DOOM's game data (Freedoom, BSD) and its license notice, see assets/freedoom/README.md. Written to disk the first time DOOM opens (src/FreedoomData.cs). -->
-    <EmbeddedResource Include="assets/freedoom/freedoom1.wad" LogicalName="freedoom1.wad" />
-    <EmbeddedResource Include="assets/freedoom/LICENSE.txt" LogicalName="freedoom-LICENSE.txt" />
+    <!-- DOOM's built-in game data (the shareware DOOM1.WAD, embedded unmodified) and its license notice, see assets/doom/README.md. Written to disk the first time DOOM opens (src/BuiltInWad.cs). -->
+    <EmbeddedResource Include="assets/doom/doom1.wad" LogicalName="doom1.wad" />
+    <EmbeddedResource Include="assets/doom/LICENSE.txt" LogicalName="doom1-LICENSE.txt" />
+
     <!-- DOOM's music is played with this soundfont (GPL-2), see assets/soundfont/README.md. Read straight from the dll by the synthesizer. -->
     <EmbeddedResource Include="assets/soundfont/TimGM6mb.sf2" LogicalName="TimGM6mb.sf2" />
     <EmbeddedResource Include="assets/soundfont/LICENSE.txt" LogicalName="TimGM6mb-LICENSE.txt" />

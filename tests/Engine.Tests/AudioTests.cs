@@ -32,7 +32,7 @@ namespace ManagedDoomTest
                 OpenSoundFont = () => File.OpenRead(SoundFont),
                 Report = capture.Reports.Add,
             };
-            return DoomSession.Create(WadPath.Doom1, options);
+            return DoomSession.Create(WadPath.Doom1Shareware, options);
         }
 
         /// <summary>Plays the game for <paramref name="tics"/> tics and keeps all the audio it made.</summary>
@@ -58,7 +58,7 @@ namespace ManagedDoomTest
             var capture = new Capture();
             using (var session = Start(false, capture))
             {
-                Assert.IsTrue(session.LoadedSoundCount >= 60, $"Freedoom Phase 1 has 69 sound effects, only {session.LoadedSoundCount} loaded");
+                Assert.IsTrue(session.LoadedSoundCount >= 50, $"the shareware game has 55 sound effects, only {session.LoadedSoundCount} loaded");
                 Assert.IsFalse(session.HasMusic, "music was switched off");
             }
         }
@@ -180,6 +180,49 @@ namespace ManagedDoomTest
                 Directory.CreateDirectory("out");
                 File.WriteAllText("out/audio-timing.txt", $"{millisecondsPerFrame:0.000} ms to render the audio for one 60 fps frame (music and sound effects)\n");
                 Assert.IsTrue(millisecondsPerFrame < 4, $"rendering one frame of audio took {millisecondsPerFrame:0.00} ms; a 16 ms frame cannot afford much");
+            }
+        }
+
+        [TestMethod]
+        public void AllTheOriginalMusicTracksAreReadableMus()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var names = DoomInfo.BgmNames.Select(n => "D_" + n.ToString().ToUpper()).Where(n => wad.GetLumpNumber(n) != -1).ToList();
+                Assert.AreEqual(13, names.Count, "the shareware game has 13 music tracks");
+                foreach (var name in names)
+                {
+                    var data = wad.ReadLump(name);
+                    Assert.IsTrue(MusPlayer.HasHeader(data), name + " is a MUS track");
+                    var seconds = MusPlayer.ScoreSeconds(data); // reads the whole score; throws if it is damaged or the reader is wrong
+                    Assert.IsTrue(seconds > 5 && seconds < 600, $"{name} runs {seconds:0.0} seconds");
+                }
+            }
+        }
+
+        [TestMethod]
+        public void TheOriginalMusicIsTheSameEveryTime()
+        {
+            // No randomness anywhere in the synthesizer: two plays of the same track give the same sound.
+            var first = new Capture();
+            var second = new Capture();
+            using (var a = Start(true, first)) Run(a, first, 70);
+            using (var b = Start(true, second)) Run(b, second, 70);
+            Assert.IsTrue(first.Left.SequenceEqual(second.Left) && first.Right.SequenceEqual(second.Right));
+        }
+
+        [TestMethod]
+        public void MidiMusicFromOtherGamesPlaysToo()
+        {
+            // Freedoom's music is plain MIDI, the other format the mod plays. Skipped (not passed) when Freedoom is not installed.
+            var capture = new Capture();
+            var options = new AudioOptions { OpenSoundFont = () => File.OpenRead(SoundFont), Report = capture.Reports.Add };
+            using (var session = DoomSession.Create(WadPath.Doom1, options))
+            {
+                Run(session, capture, 3 * 35);
+                Assert.AreEqual(0, capture.Reports.Count, string.Join("; ", capture.Reports));
+                Assert.IsTrue(Peak(capture.Left) > 0.02f && Peak(capture.Left) <= 1f, $"peak {Peak(capture.Left)}");
+                Assert.IsTrue(Rms(capture.Left) > 0.003, "it is not silent");
             }
         }
     }

@@ -30,10 +30,17 @@ internal sealed class DoomView
 	private const double TicSeconds = 1.0 / 35.0;
 	private const int MaxFailuresBeforeStopping = 5;
 
+	/// <summary>The width of the game picker's buttons, on the 1920x1080 canvas (the picture area is 1024 wide).</summary>
+	private const float PickerWidth = 720f;
+
 	private readonly Control screen;
 	private readonly Godot.Button closeButton;
 	private readonly TextureRect picture;
 	private readonly Label message;
+	private readonly Control pickerRoot;
+	private readonly Label pickerTitle;
+	private readonly VBoxContainer choiceList;
+	private readonly Label pickerFooter;
 
 	private DoomSession? session;
 	private byte[]? rgba;
@@ -88,6 +95,33 @@ internal sealed class DoomView
 		message.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect, Control.LayoutPresetMode.Minsize, 24);
 		screen.AddChild(message);
 
+		// The game picker: shown instead of starting a game right away when the player has saved their own DOOM games (see Start). Hidden otherwise.
+		pickerRoot = new CenterContainer { Visible = false, MouseFilter = Control.MouseFilterEnum.Ignore };
+		pickerRoot.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+		screen.AddChild(pickerRoot);
+		var pickerBox = new VBoxContainer { CustomMinimumSize = new Vector2(PickerWidth, 0), MouseFilter = Control.MouseFilterEnum.Ignore };
+		pickerBox.AddThemeConstantOverride("separation", 10);
+		pickerRoot.AddChild(pickerBox);
+		pickerTitle = new Label
+		{
+			HorizontalAlignment = HorizontalAlignment.Center,
+			AutowrapMode = TextServer.AutowrapMode.WordSmart,
+			CustomMinimumSize = new Vector2(PickerWidth, 0),
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+		};
+		pickerBox.AddChild(pickerTitle);
+		choiceList = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+		choiceList.AddThemeConstantOverride("separation", 8);
+		pickerBox.AddChild(choiceList);
+		pickerFooter = new Label
+		{
+			HorizontalAlignment = HorizontalAlignment.Center,
+			AutowrapMode = TextServer.AutowrapMode.Arbitrary,
+			CustomMinimumSize = new Vector2(PickerWidth, 0),
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+		};
+		pickerBox.AddChild(pickerFooter);
+
 		// The picture area holds keyboard focus while the game runs, and receives the keys. The mouse clicks arrive at the full-screen mouse area.
 		screen.FocusMode = Control.FocusModeEnum.All;
 		screen.GuiInput += OnGuiInput;
@@ -95,39 +129,121 @@ internal sealed class DoomView
 	}
 
 	/// <summary>
-	/// Called when the popup opens. The first time (in a run, or after the player quit from DOOM's menu) this starts a new game from the embedded Freedoom
-	/// data; after that it carries on the paused game exactly where it was left.
+	/// Called when the popup opens. If a game is paused, it carries on exactly where it was left. Otherwise it starts a new game: straight away with the
+	/// built-in shareware DOOM if the player has saved no games of their own, or after the player picks from a short list (the built-in one and each game saved
+	/// in the mod's wads folder).
 	/// </summary>
 	public void Start()
 	{
 		try
 		{
-			var timer = Stopwatch.StartNew();
-			var resuming = session != null;
-			if (session == null)
+			if (session != null)
 			{
-				var wad = FreedoomData.EnsureOnDisk();
-				var dataReady = timer.ElapsedMilliseconds;
-				session = DoomSession.Create(wad, new AudioOptions { OpenSoundFont = SoundFontData.Open, Report = ReportAudioProblem });
-				rgba = new byte[session.Width * session.Height * 4];
-				image = Image.CreateFromData(session.Width, session.Height, false, Image.Format.Rgba8, rgba);
-				texture = ImageTexture.CreateFromImage(image);
-				picture.Texture = texture;
-				ModLog.Info("game", $"new game from {Path.GetFileName(wad)} ({session.Width}x{session.Height}) in {timer.ElapsedMilliseconds} ms " +
-					$"(game data ready after {dataReady} ms; {session.LoadedSoundCount} sounds, music {(session.HasMusic ? "on" : "off")})");
-			}
-			message.Visible = false;
-			Activate(session);
-			if (resuming)
-			{
+				HidePicker();
+				message.Visible = false;
+				Activate(session);
 				ModLog.Info("game", "carrying on the paused game");
+				return;
+			}
+
+			var local = FindSavedGames();
+			if (local.Count == 0)
+			{
+				BeginGame(null, local);
+			}
+			else
+			{
+				ShowPicker(local, null);
 			}
 		}
 		catch (Exception e)
 		{
-			ModLog.Fail("game", "starting DOOM", e);
+			ModLog.Fail("game", "opening DOOM", e);
 			Shutdown();
 			Say($"Could not start DOOM.\n\n{e.GetType().Name}: {ModLog.Clean(e.Message)}");
+		}
+	}
+
+	/// <summary>Starts a new game from <paramref name="wad"/>, or from the built-in game when that is null. If it fails, says why, and offers the list again if there is one.</summary>
+	private void BeginGame(WadFile? wad, IReadOnlyList<WadFile> saved)
+	{
+		HidePicker();
+		var label = wad?.Name ?? BuiltInWad.Label;
+		try
+		{
+			var timer = Stopwatch.StartNew();
+			var path = wad?.Path ?? BuiltInWad.EnsureOnDisk();
+			var dataReady = timer.ElapsedMilliseconds;
+			var game = DoomSession.Create(path, new AudioOptions { OpenSoundFont = SoundFontData.Open, Report = ReportAudioProblem });
+			session = game;
+			rgba = new byte[game.Width * game.Height * 4];
+			image = Image.CreateFromData(game.Width, game.Height, false, Image.Format.Rgba8, rgba);
+			texture = ImageTexture.CreateFromImage(image);
+			picture.Texture = texture;
+			message.Visible = false;
+			Activate(game);
+			ModLog.Info("game", $"new game: {label} ({game.Width}x{game.Height}) in {timer.ElapsedMilliseconds} ms " +
+				$"(game data ready after {dataReady} ms; {game.LoadedSoundCount} sounds, music {(game.HasMusic ? "on" : "off")})");
+		}
+		catch (Exception e)
+		{
+			ModLog.Fail("game", $"starting {label}", e);
+			Shutdown();
+			var problem = $"Could not start {label}.\n{e.GetType().Name}: {ModLog.Clean(e.Message)}";
+			if (saved.Count > 0)
+			{
+				ShowPicker(saved, problem);
+			}
+			else
+			{
+				Say(problem);
+			}
+		}
+	}
+
+	/// <summary>The games the player saved in the mod's wads folder (made if it is not there yet, so the player can see where it is).</summary>
+	private static IReadOnlyList<WadFile> FindSavedGames()
+	{
+		var folder = SavedGamesFolder;
+		ModLog.Try("game", "creating the wads folder", () => DirAccess.MakeDirRecursiveAbsolute(folder));
+		var games = WadLibrary.FindGames(folder, text => ModLog.OnceInfo("game", text, text));
+		ModLog.OnceInfo("game", "wads-folder", $"DOOM games saved in {folder} are offered when DOOM opens; found {games.Count} when this was first checked");
+		return games;
+	}
+
+	private static string SavedGamesFolder => Path.Combine(BuiltInWad.DataFolder, "wads");
+
+	private void ShowPicker(IReadOnlyList<WadFile> saved, string? problem)
+	{
+		foreach (var child in choiceList.GetChildren())
+		{
+			child.QueueFree();
+		}
+		AddChoice(BuiltInWad.Label, null, saved);
+		foreach (var wad in saved)
+		{
+			AddChoice($"{wad.Name}   ({wad.Size / 1048576.0:0.0} MB)", wad, saved);
+		}
+
+		pickerTitle.Text = problem == null ? "Choose a game" : problem + "\n\nChoose a game";
+		pickerFooter.Text = "Save more DOOM games (.wad files) in:\n" + SavedGamesFolder;
+		message.Visible = false;
+		picture.Texture = null;
+		pickerRoot.Visible = true;
+	}
+
+	private void AddChoice(string text, WadFile? wad, IReadOnlyList<WadFile> saved)
+	{
+		var button = new Godot.Button { Text = text, CustomMinimumSize = new Vector2(PickerWidth, 56), FocusMode = Control.FocusModeEnum.None };
+		button.Pressed += () => ModLog.Try("game", "starting the chosen game", () => BeginGame(wad, saved));
+		choiceList.AddChild(button);
+	}
+
+	private void HidePicker()
+	{
+		if (GodotObject.IsInstanceValid(pickerRoot))
+		{
+			pickerRoot.Visible = false;
 		}
 	}
 
@@ -139,6 +255,7 @@ internal sealed class DoomView
 	public void Suspend()
 	{
 		Deactivate();
+		HidePicker();
 		if (endGame)
 		{
 			endGame = false;
@@ -150,6 +267,7 @@ internal sealed class DoomView
 	public void Shutdown()
 	{
 		Deactivate();
+		HidePicker();
 		DisposeGame();
 	}
 

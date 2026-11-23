@@ -88,13 +88,20 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
-        public void TheRealFreedomDataInTheAssetsFolderIsAValidGame()
+        public void TheBuiltInGameInTheAssetsFolderIsTheShareware19()
         {
-            // The file that gets embedded: check it is the Freedoom Phase 1 data the mod expects, and that the engine can start a game from a copy made the way the mod makes it.
-            var asset = Path.GetFullPath("../../assets/freedoom/freedoom1.wad");
-            Assert.IsTrue(File.Exists(asset), "assets/freedoom/freedoom1.wad is missing from the repo");
-            Assert.AreEqual(28795080L, new FileInfo(asset).Length);
-            var path = WadCache.EnsureOnDisk(NewFolder(), "freedoom1-0.13.0.wad", () => File.OpenRead(asset));
+            // The file that gets embedded: check it is the original shareware DOOM 1.9 the mod expects, and that the engine can start a game from a copy made the way the mod makes it.
+            var asset = Path.GetFullPath("../../assets/doom/doom1.wad");
+            Assert.IsTrue(File.Exists(asset), "assets/doom/doom1.wad is missing from the repo");
+            Assert.AreEqual(4196020L, new FileInfo(asset).Length);
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+            using (var file = File.OpenRead(asset))
+            {
+                Assert.AreEqual("f0cefca49926d00903cf57551d901abe", BitConverter.ToString(md5.ComputeHash(file)).Replace("-", "").ToLowerInvariant());
+            }
+            Assert.IsTrue(WadLibrary.IsGame(asset), "it is a whole game (IWAD)");
+
+            var path = WadCache.EnsureOnDisk(NewFolder(), "doom1-shareware-1.9.wad", () => File.OpenRead(asset));
             using (var session = DoomSession.Create(path))
             {
                 var rgba = new byte[session.Width * session.Height * 4];
