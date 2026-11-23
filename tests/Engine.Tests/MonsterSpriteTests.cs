@@ -110,6 +110,17 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void APoseMuchTallerOrOffToTheSideIsAJump()
+        {
+            var stand = Blob(60, 100, 200);
+            Assert.IsFalse(MonsterSprites.IsJumpy(Blob(60, 100, 200), stand));
+            Assert.IsFalse(MonsterSprites.IsJumpy(Blob(70, 115, 200), stand), "15% taller is an ordinary pose");
+            Assert.IsTrue(MonsterSprites.IsJumpy(Blob(40, 150, 200), stand), "the clam's rear-up was 151% tall");
+            Assert.IsTrue(MonsterSprites.IsJumpy(new CapturedFrame(stand.Image, stand.OriginX + 100, stand.OriginY), stand), "far to the side");
+            Assert.IsTrue(MonsterSprites.IsJumpy(new CapturedFrame(stand.Image, stand.OriginX, stand.OriginY + 80), stand), "in the air");
+        }
+
+        [TestMethod]
         public void TheGameHasFourGibAnimationsToDieInto()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using DoomedSpire.Host;
 using Godot;
+using MegaCrit.Sts2.Core.Bindings.MegaSpine;
 using MegaCrit.Sts2.Core.Models;
 
 namespace DoomedSpire;
@@ -93,6 +94,7 @@ internal static class EnemyCapture
 			var animationNames = skeleton.GetData().GetAnimationNames();
 			var frames = new Dictionary<char, CapturedFrame>();
 			var reported = new HashSet<string>();
+
 			foreach (var request in requests)
 			{
 				var animation = MonsterSprites.ChooseAnimation(request.Animations, animationNames);
@@ -108,27 +110,31 @@ internal static class EnemyCapture
 				{
 					ModLog.Info("enemy", $"{name} has no {request.Animations[0]} animation; using {animation} instead");
 				}
-				state.SetAnimation(animation, false);
-				using (var entry = state.GetCurrent(0))
+				// A pose that is much taller than the standing one, or far off to the side or in the air (a rear-up, a hop) looks like a jump when DOOM holds it for several
+				// ticks between ordinary poses, so later moments of the animation are tried until one is not (the Sewer Clam rears up a quarter of the way into its attack).
+				var reference = frames.Values.FirstOrDefault();
+				CapturedFrame? chosen = null;
+				for (var attempt = 0; attempt <= MonsterSprites.PoseRetries; attempt++)
 				{
-					if (entry == null)
+					var fraction = Math.Min(0.95, request.Fraction + MonsterSprites.PoseRetryStep * attempt);
+					var pose = await TakePose(host, viewport, state, skeleton, animation, fraction);
+					if (pose == null)
 					{
-						continue;
+						break;
 					}
-					entry.SetMixDuration(0f);
-					var end = entry.GetAnimationEnd();
-					entry.SetTrackTime((float)Math.Clamp(request.Fraction * end, 0.0, Math.Max(0.0, end - 0.02)));
+					chosen = pose;
+					if (reference == null || !MonsterSprites.IsJumpy(pose, reference))
+					{
+						if (attempt > 0)
+						{
+							ModLog.Info("enemy", $"{name}: the {animation} pose at {request.Fraction:0.00} jumps about, so {fraction:0.00} of the way through it is used instead");
+						}
+						break;
+					}
 				}
-				state.Update(0f);
-				state.Apply(skeleton);
-
-				viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
-				await NextFrame(host);
-				await WithTimeout(WaitForDraw(host), "a frame to be drawn");
-				var pixels = PlayerFace.ToPixels(viewport.GetTexture().GetImage());
-				if (pixels != null)
+				if (chosen != null)
 				{
-					frames[request.Letter] = new CapturedFrame(pixels, (int)FeetX, (int)FeetY);
+					frames[request.Letter] = chosen;
 				}
 			}
 			return frames;
@@ -145,6 +151,30 @@ internal static class EnemyCapture
 				viewport.QueueFree();
 			}
 		}
+	}
+
+	/// <summary>The creature held at one moment (a fraction of the way through) of an animation, as a picture; null if there is none.</summary>
+	private static async Task<CapturedFrame?> TakePose(Node host, SubViewport viewport, MegaAnimationState state, MegaSkeleton skeleton, string animation, double fraction)
+	{
+		state.SetAnimation(animation, false);
+		using (var entry = state.GetCurrent(0))
+		{
+			if (entry == null)
+			{
+				return null;
+			}
+			entry.SetMixDuration(0f);
+			var end = entry.GetAnimationEnd();
+			entry.SetTrackTime((float)Math.Clamp(fraction * end, 0.0, Math.Max(0.0, end - 0.02)));
+		}
+		state.Update(0f);
+		state.Apply(skeleton);
+
+		viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
+		await NextFrame(host);
+		await WithTimeout(WaitForDraw(host), "a frame to be drawn");
+		var pixels = PlayerFace.ToPixels(viewport.GetTexture().GetImage());
+		return pixels == null ? null : new CapturedFrame(pixels, (int)FeetX, (int)FeetY);
 	}
 
 	private static async Task NextFrame(Node host)

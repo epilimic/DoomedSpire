@@ -204,6 +204,20 @@ internal static class MonsterSprites
 		return null;
 	}
 
+	/// <summary>How many later moments of an animation are tried for a pose that jumps about, and how much later each is (a fraction of the animation).</summary>
+	public const int PoseRetries = 4;
+	public const double PoseRetryStep = 0.1;
+
+	/// <summary>
+	/// True if a pose is far from the standing one: more than 30% taller, more than 30% of its height off to the side, or more than 30% up in the air.
+	/// Held for several game ticks between ordinary poses, such a pose looks like a jump.
+	/// </summary>
+	public static bool IsJumpy(CapturedFrame pose, CapturedFrame standing)
+	{
+		var m = MonsterSpriteBuilder.Measure(pose, standing);
+		return m != null && (m.Value.Height > 130 || Math.Abs(m.Value.Shift) > 30 || m.Value.Lift > 30);
+	}
+
 	/// <summary>
 	/// The creature's pose for a frame: standing and walking use its idle loop (spread over the loop), attacking its attack, being hurt its hurt, dying and
 	/// being gibbed its death (ending on the last pose). The names are the ones the game's creatures use; the first one a creature has is taken.
