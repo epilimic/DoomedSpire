@@ -1,8 +1,8 @@
 #nullable enable
 using System;
+using System.Linq;
 using ManagedDoom;
 using ManagedDoom.Audio;
-using ManagedDoom.UserInput;
 
 namespace DoomedSpire.Host;
 
@@ -14,12 +14,14 @@ internal sealed class DoomSession : IDisposable
 {
 	private readonly GameContent content;
 	private readonly EngineVideo video;
+	private readonly KeyboardInput input;
 	private readonly Doom doom;
 
-	private DoomSession(GameContent content, EngineVideo video, Doom doom)
+	private DoomSession(GameContent content, EngineVideo video, KeyboardInput input, Doom doom)
 	{
 		this.content = content;
 		this.video = video;
+		this.input = input;
 		this.doom = doom;
 	}
 
@@ -39,8 +41,9 @@ internal sealed class DoomSession : IDisposable
 		{
 			content = new GameContent(args);
 			var video = new EngineVideo(config, content);
-			var doom = new Doom(args, config, content, video, NullSound.GetInstance(), NullMusic.GetInstance(), NullUserInput.GetInstance());
-			return new DoomSession(content, video, doom);
+			var input = new KeyboardInput(config);
+			var doom = new Doom(args, config, content, video, NullSound.GetInstance(), NullMusic.GetInstance(), input);
+			return new DoomSession(content, video, input, doom);
 		}
 		catch
 		{
@@ -49,14 +52,44 @@ internal sealed class DoomSession : IDisposable
 		}
 	}
 
-	/// <summary>Runs the engine forward one tic (DOOM's clock runs at 35 tics a second).</summary>
-	public void Tick() => doom.Update();
+	/// <summary>Runs the engine forward one tic (DOOM's clock runs at 35 tics a second). <see cref="UpdateResult.Completed"/> means the player quit from DOOM's menu.</summary>
+	public UpdateResult Tick() => doom.Update();
 
-	/// <summary>Draws the current moment of the game into <paramref name="rgba"/> (Width * Height * 4 bytes, row after row, R G B A).</summary>
-	public void RenderTo(byte[] rgba)
+	/// <summary>A key went down or up. The engine needs it twice: as the held state for moving and shooting, and as an event for its menu.</summary>
+	public void PostKey(DoomKey key, bool pressed)
 	{
-		video.Render(doom, Fixed.One);
+		input.SetKey(key, pressed);
+		doom.PostEvent(new DoomEvent(pressed ? EventType.KeyDown : EventType.KeyUp, key));
+	}
+
+	/// <summary>Lets go of every key (the popup closed, or the game window lost focus), so nothing stays held.</summary>
+	public void ReleaseAllKeys()
+	{
+		foreach (var key in input.PressedKeys().ToArray())
+		{
+			PostKey(key, false);
+		}
+	}
+
+	/// <summary>
+	/// Draws the game into <paramref name="rgba"/> (Width * Height * 4 bytes, row after row, R G B A). <paramref name="progress"/> is how far we are between
+	/// the last tic and the next one, 0 to 1; the engine blends the two so movement is smooth at any frame rate. 1 means exactly the last tic.
+	/// </summary>
+	public void RenderTo(byte[] rgba, double progress = 1.0)
+	{
+		video.Render(doom, Fixed.FromDouble(Math.Clamp(progress, 0.0, 1.0)));
 		video.CopyRowMajor(rgba);
+	}
+
+	// What the tests look at.
+	internal bool MenuActive => doom.Menu.Active;
+	internal (int X, int Y, uint Angle) PlayerState
+	{
+		get
+		{
+			var mobj = doom.Game.World.ConsolePlayer.Mobj;
+			return (mobj.X.Data, mobj.Y.Data, mobj.Angle.Data);
+		}
 	}
 
 	/// <summary>

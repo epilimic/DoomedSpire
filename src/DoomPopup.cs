@@ -7,7 +7,7 @@ namespace DoomedSpire;
 /// <summary>
 /// The button on the map screen and the popup panel it opens. Plain Godot nodes only, no custom Godot classes: a dll-only mod has no script
 /// registration, so a subclass of a Godot node could not override _Ready or _Input. Behaviour is wired with signals instead.
-/// For now the popup shows one still frame of DOOM (see FrameView).
+/// The popup runs DOOM (see DoomView).
 /// </summary>
 internal static class DoomPopup
 {
@@ -25,29 +25,34 @@ internal static class DoomPopup
 		var popup = BuildPopup(out var closeButton, out var view);
 		var button = BuildButton();
 
-		button.Pressed += () => ModLog.Try("map", "opening the popup", () =>
+		void SetOpen(bool open)
 		{
-			SetOpen(popup, true);
-			view.EnsureDrawn();
-		});
-		closeButton.Pressed += () => ModLog.Try("map", "closing the popup", () => SetOpen(popup, false));
+			if (!GodotObject.IsInstanceValid(popup) || popup.Visible == open)
+			{
+				return;
+			}
+			popup.Visible = open;
+			ModLog.Info("map", open ? "popup opened" : "popup closed");
+			if (open)
+			{
+				view.Start();
+			}
+			else
+			{
+				view.Stop();
+			}
+		}
+
+		view.RequestClose = () => SetOpen(false);
+		button.Pressed += () => ModLog.Try("map", "opening the popup", () => SetOpen(true));
+		closeButton.Pressed += () => ModLog.Try("map", "closing the popup", () => SetOpen(false));
 		// The map screen's own Closed signal (NMapScreen.cs, emitted at the start of Close) also closes the popup,
 		// so the player is never left inside it while the game moves on.
-		map.Closed += () => ModLog.Try("map", "closing the popup with the map", () => SetOpen(popup, false));
+		map.Closed += () => ModLog.Try("map", "closing the popup with the map", () => SetOpen(false));
 
 		map.AddChildSafely(button);
 		map.AddChildSafely(popup);
 		ModLog.Info("map", "DOOM button added to the map screen");
-	}
-
-	private static void SetOpen(Control popup, bool open)
-	{
-		if (!GodotObject.IsInstanceValid(popup) || popup.Visible == open)
-		{
-			return;
-		}
-		popup.Visible = open;
-		ModLog.Info("map", open ? "popup opened" : "popup closed");
 	}
 
 	/// <summary>Bottom right, next to the map's Share button (map_screen.tscn: ShareButton is at -220..-48 by -112..-48 from the bottom right corner).</summary>
@@ -74,7 +79,7 @@ internal static class DoomPopup
 	}
 
 	/// <summary>A dimmed backdrop that swallows clicks (so the map underneath cannot be dragged) and a centred panel with a title, a Close button and a 4:3 area for the picture.</summary>
-	private static Control BuildPopup(out Button closeButton, out FrameView view)
+	private static Control BuildPopup(out Button closeButton, out DoomView view)
 	{
 		var root = new Control { Name = PopupName, Visible = false, MouseFilter = Control.MouseFilterEnum.Stop };
 		root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
@@ -121,7 +126,7 @@ internal static class DoomPopup
 		};
 		box.AddChild(screen);
 
-		view = new FrameView(screen);
+		view = new DoomView(screen);
 
 		return root;
 	}
