@@ -1,6 +1,8 @@
 #nullable enable
 using System;
 using ManagedDoom;
+using ManagedDoom.Audio;
+using ManagedDoom.UserInput;
 
 namespace DoomedSpire.Host;
 
@@ -37,7 +39,7 @@ internal sealed class DoomSession : IDisposable
 		{
 			content = new GameContent(args);
 			var video = new EngineVideo(config, content);
-			var doom = new Doom(args, config, content, video, null, null, null);
+			var doom = new Doom(args, config, content, video, NullSound.GetInstance(), NullMusic.GetInstance(), NullUserInput.GetInstance());
 			return new DoomSession(content, video, doom);
 		}
 		catch
