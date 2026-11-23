@@ -63,7 +63,13 @@ namespace ManagedDoomTest
             {
                 var sets = MonsterSprites.GibAnimations(wad);
                 Assert.AreEqual(4, sets.Count, "the player's, the imp's, the zombieman's and the shotgun guy's");
-                Assert.IsTrue(sets.All(s => s.Count >= 6), "each is a number of frames: " + string.Join(",", sets.Select(s => s.Count)));
+                Assert.IsTrue(sets.All(s => s.Count >= 5), "each is a number of frames: " + string.Join(",", sets.Select(s => s.Count)));
+                // the creature itself is not in them: the player's own gib animation has 9 frames, the first two (him with his gun, then his body in pieces) are dropped
+                Assert.AreEqual(9 - MonsterSprites.FramesBeforeTheBits, sets[0].Count);
+                using (var all = new Wad(WadPath.Doom1Shareware))
+                {
+                    Assert.IsFalse(sets[0].Any(p => p.SequenceEqual(all.ReadLump("PLAYO0"))), "not the first frame of the player's");
+                }
                 Assert.IsTrue(sets.All(s => s.All(p => Patch.FromData("gib", p).Width > 5)), "each frame is a picture");
             }
         }

@@ -141,8 +141,11 @@ internal static class MonsterSprites
 		return null;
 	}
 
+	/// <summary>How many frames at the start of each of DOOM's gib animations still show the creature whole or bursting (the first is the creature itself, the second its body in pieces).</summary>
+	public const int FramesBeforeTheBits = 2;
+
 	/// <summary>
-	/// DOOM's own gib animations, as the pictures of each in order, ending on the heap: the player's, the imp's, the zombieman's and the shotgun guy's (the
+	/// DOOM's own gib animations, as the pictures of each in order, ending on the heap and without their first frames (<see cref="FramesBeforeTheBits"/>): the player's, the imp's, the zombieman's and the shotgun guy's (the
 	/// frames each is gibbed through, from the engine's state tables). A set the game data does not have in full is left out.
 	/// </summary>
 	public static IReadOnlyList<IReadOnlyList<byte[]>> GibAnimations(Wad wad)
@@ -163,9 +166,11 @@ internal static class MonsterSprites
 				}
 				pictures.Add(wad.ReadLump(name));
 			}
-			if (pictures.Count > 0)
+			// The first frames of a gib animation are the creature itself bursting (the player with his gun, the imp, the zombieman), which is what must not show:
+			// start from the frame where it is only bits flying.
+			if (pictures.Count > FramesBeforeTheBits)
 			{
-				sets.Add(pictures);
+				sets.Add(pictures.Skip(FramesBeforeTheBits).ToList());
 			}
 		}
 		return sets;
