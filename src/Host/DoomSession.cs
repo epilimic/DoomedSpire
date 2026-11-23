@@ -14,10 +14,10 @@ internal sealed class DoomSession : IDisposable
 {
 	private readonly GameContent content;
 	private readonly EngineVideo video;
-	private readonly KeyboardInput input;
+	private readonly PlayerInput input;
 	private readonly Doom doom;
 
-	private DoomSession(GameContent content, EngineVideo video, KeyboardInput input, Doom doom)
+	private DoomSession(GameContent content, EngineVideo video, PlayerInput input, Doom doom)
 	{
 		this.content = content;
 		this.video = video;
@@ -41,7 +41,7 @@ internal sealed class DoomSession : IDisposable
 		{
 			content = new GameContent(args);
 			var video = new EngineVideo(config, content);
-			var input = new KeyboardInput(config);
+			var input = new PlayerInput(config);
 			var doom = new Doom(args, config, content, video, NullSound.GetInstance(), NullMusic.GetInstance(), input);
 			return new DoomSession(content, video, input, doom);
 		}
@@ -62,13 +62,20 @@ internal sealed class DoomSession : IDisposable
 		doom.PostEvent(new DoomEvent(pressed ? EventType.KeyDown : EventType.KeyUp, key));
 	}
 
-	/// <summary>Lets go of every key (the popup closed, or the game window lost focus), so nothing stays held.</summary>
-	public void ReleaseAllKeys()
+	/// <summary>A mouse button went down or up (left is fire, right is use, as set in the engine's default bindings).</summary>
+	public void PostMouseButton(DoomMouseButton button, bool pressed) => input.SetMouseButton(button, pressed);
+
+	/// <summary>The mouse moved sideways by this many pixels (right is positive); the player turns by it on the next tic.</summary>
+	public void AddMouseTurn(double pixels) => input.AddMouseTurn(pixels);
+
+	/// <summary>Lets go of every key and mouse button (the popup closed, or the game window lost focus), so nothing stays held.</summary>
+	public void ReleaseAllInput()
 	{
 		foreach (var key in input.PressedKeys().ToArray())
 		{
-			PostKey(key, false);
+			doom.PostEvent(new DoomEvent(EventType.KeyUp, key)); // the menu, if it is showing, hears the key go up too
 		}
+		input.ReleaseAll();
 	}
 
 	/// <summary>
@@ -83,6 +90,7 @@ internal sealed class DoomSession : IDisposable
 
 	// What the tests look at.
 	internal bool MenuActive => doom.Menu.Active;
+	internal int Ammo => doom.Game.World.ConsolePlayer.Ammo[(int)AmmoType.Clip];
 	internal (int X, int Y, uint Angle) PlayerState
 	{
 		get

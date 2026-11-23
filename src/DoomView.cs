@@ -10,14 +10,16 @@ namespace DoomedSpire;
 
 /// <summary>
 /// The picture area inside the popup, and the running game behind it. Start() builds a game and begins playing it; Stop() throws it away.
-/// The Godot side only: the engine work (the game itself, the keyboard) is in src/Host, which the tests run without the game.
+/// The Godot side only: the engine work (the game itself, keyboard and mouse) is in src/Host, which the tests run without the game.
 ///
 /// No custom Godot classes (a dll-only mod cannot register scripts), so everything is wired with signals:
 ///  - every frame comes from SceneTree.ProcessFrame, connected only while the game is running;
-///  - keys arrive through the GuiInput signal of the picture area, which holds keyboard focus while the game runs and ACCEPTS every key event.
-///    The game's own hotkeys (NHotkeyManager and NInputManager) read keys in _UnhandledInput / _UnhandledKeyInput, which Godot only calls for
-///    events that no control accepted, so none of DOOM's keys reach them (NHotkeyManager.cs:261, NInputManager.cs:663, game v0.113.1).
-///    The handlers that run before the GUI (NControllerManager._Input, NDevConsole._Input, NGame._Input) still see keys; see the notes in the code below.
+///  - keys and the mouse arrive through the GuiInput signal of the picture area, which holds keyboard focus while the game runs.
+///
+/// Keys: every key goes to DOOM except Esc, which leaves DOOM and drops back to the map screen. Nothing reaches the game: the picture area accepts
+/// every key event (stopping the game's _UnhandledInput hotkeys), and KeyLock (src/KeyLock.cs) stops the handlers that read keys before the GUI.
+/// Mouse: never captured, the cursor moves freely. While it is over the picture, moving it left and right turns the player, left click fires,
+/// right click uses. The mouse never walks the player (WASD does).
 /// </summary>
 internal sealed class DoomView
 {
@@ -116,6 +118,7 @@ internal sealed class DoomView
 			frameHandler = OnFrame;
 			tree.ProcessFrame += frameHandler;
 			screen.GrabFocus();
+			KeyLock.Active = true;
 			ModLog.Info("game", $"started from {Path.GetFileName(wad)} ({session.Width}x{session.Height}) in {timer.ElapsedMilliseconds} ms");
 		}
 		catch (Exception e)
@@ -138,7 +141,7 @@ internal sealed class DoomView
 			frameHandler = null;
 			tree = null;
 
-			session?.ReleaseAllKeys();
+			session?.ReleaseAllInput();
 			session?.Dispose();
 		}
 		catch (Exception e)
@@ -147,6 +150,7 @@ internal sealed class DoomView
 		}
 		finally
 		{
+			KeyLock.Active = false;
 			session = null;
 			rgba = null;
 			image = null;
@@ -178,7 +182,7 @@ internal sealed class DoomView
 			{
 				if (!windowWasUnfocused)
 				{
-					current.ReleaseAllKeys();
+					current.ReleaseAllInput();
 					windowWasUnfocused = true;
 				}
 				lastTimestamp = Stopwatch.GetTimestamp();
@@ -229,29 +233,66 @@ internal sealed class DoomView
 		}
 	}
 
-	/// <summary>Every input event that reaches the picture area. Keys go to DOOM and are marked as handled so that nothing else in the game reacts to them.</summary>
+	/// <summary>
+	/// Every input event that reaches the picture area. Each one is accepted, so nothing else in the game reacts to it.
+	/// Keys go to DOOM, except Esc. The mouse turns the player and shoots or uses; it does not walk.
+	/// </summary>
 	private void OnGuiInput(InputEvent inputEvent)
 	{
 		try
 		{
-			if (inputEvent is not InputEventKey key || session == null)
+			var current = session;
+			if (current == null)
 			{
 				return;
 			}
-			screen.AcceptEvent();
-			if (key.Echo)
+
+			switch (inputEvent)
 			{
-				return;
-			}
-			var doomKey = KeyMap.ToDoom(key);
-			if (doomKey != DoomKey.Unknown)
-			{
-				session.PostKey(doomKey, key.Pressed);
+				case InputEventKey key:
+					screen.AcceptEvent();
+					if (key.Echo)
+					{
+						return;
+					}
+					if (key.Keycode == Key.Escape || key.PhysicalKeycode == Key.Escape)
+					{
+						// Esc is the way out. It leaves on release, not on press, so that both halves of the key stay inside the popup;
+						// otherwise the game would see an Esc release with no press and might act on it (go back, open the pause menu).
+						if (!key.Pressed)
+						{
+							RequestClose?.Invoke();
+						}
+						return;
+					}
+					var doomKey = KeyMap.ToDoom(key);
+					if (doomKey != DoomKey.Unknown)
+					{
+						current.PostKey(doomKey, key.Pressed);
+					}
+					break;
+
+				case InputEventMouseMotion motion:
+					screen.AcceptEvent();
+					current.AddMouseTurn(motion.Relative.X);
+					break;
+
+				case InputEventMouseButton button:
+					screen.AcceptEvent();
+					if (button.ButtonIndex == MouseButton.Left)
+					{
+						current.PostMouseButton(DoomMouseButton.Mouse1, button.Pressed);
+					}
+					else if (button.ButtonIndex == MouseButton.Right)
+					{
+						current.PostMouseButton(DoomMouseButton.Mouse2, button.Pressed);
+					}
+					break;
 			}
 		}
 		catch (Exception e)
 		{
-			ModLog.Fail("input", "handling a key", e);
+			ModLog.Fail("input", "handling an input event", e);
 		}
 	}
 

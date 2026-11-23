@@ -64,6 +64,15 @@ public static class ModEntry
 			}
 		}
 		ModLog.Info("boot", $"hooked into the game ({patchClasses.Count - failed.Count} of {patchClasses.Count} patches)");
+
+		try
+		{
+			KeyLock.Apply(harmony);
+		}
+		catch (Exception e)
+		{
+			ModLog.Fail("boot", "installing the key lock", e);
+		}
 		if (failed.Count > 0)
 		{
 			ModLog.Warn("boot", $"patches that did NOT apply: {string.Join(", ", failed)}. Those features will not work; the rest still do.");

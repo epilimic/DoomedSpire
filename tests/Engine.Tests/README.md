@@ -13,9 +13,9 @@ distribution's package (Debian/Ubuntu: `freedoom`; on Arch/CachyOS I believe `fr
 The packages' usual folders (`/usr/share/games/doom`, `/usr/share/doom`) are found without any setting. A test whose WAD is missing is reported as SKIP, never as a pass.
 The project is built for .NET 8 and is set to run on any newer runtime.
 
-**Last result (Freedoom 0.13.0, .NET 8): 106 passed, 0 failed, 0 skipped, 3 seconds.** Checked that it can fail: making the fixed-point multiply off by one makes 40 of the 97 fail.
+**Last result (Freedoom 0.13.0, .NET 8): 113 passed, 0 failed, 0 skipped, 3 seconds.** Checked that it can fail: making the fixed-point multiply off by one makes 40 of the 97 fail.
 
-`FrameTests.cs` is our own (not upstream): it runs the engine glue in `src/Host` on Freedoom: renders a frame, walks, turns, opens the menu, quits. It also saves the picture to `tests/Engine.Tests/out/first-frame.png` (git-ignored), so a person can look at it.
+`FrameTests.cs` is our own (not upstream): it runs the engine glue in `src/Host` on Freedoom: renders a frame, walks, turns, shoots, opens the menu, quits, and turns keyboard and mouse input into the player's commands. It also saves the picture to `tests/Engine.Tests/out/first-frame.png` (git-ignored), so a person can look at it.
 
 ## Where the tests come from
 

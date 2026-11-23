@@ -135,14 +135,14 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
-        public void ReleaseAllKeysLetsGoOfEverything()
+        public void ReleaseAllInputLetsGoOfEverything()
         {
             using (var session = Started())
             {
                 session.PostKey(DoomKey.Up, true);
                 session.PostKey(DoomKey.LControl, true);
                 Tics(session, 5);
-                session.ReleaseAllKeys();
+                session.ReleaseAllInput();
                 Tics(session, 100);
                 var stopped = session.PlayerState;
                 Tics(session, 35);
@@ -189,6 +189,124 @@ namespace ManagedDoomTest
                 var completed = false;
                 for (var i = 0; i < 200 && !completed; i++) completed = session.Tick() == UpdateResult.Completed;
                 Assert.IsTrue(completed, "confirming quit should make Tick report Completed, so the popup can close");
+            }
+        }
+
+        // --- mouse (piece 5, revised) ---
+
+        private static TicCmd Build(PlayerInput input)
+        {
+            var cmd = new TicCmd();
+            input.BuildTicCmd(cmd);
+            return cmd;
+        }
+
+        [TestMethod]
+        public void MouseMovesOnlyTurnThePlayer()
+        {
+            var input = new PlayerInput(new Config());
+            input.AddMouseTurn(30);
+            var cmd = Build(input);
+            Assert.IsTrue(cmd.AngleTurn < 0, "moving the mouse right should turn the player right (a negative angle in DOOM)");
+            Assert.AreEqual(0, (int)cmd.ForwardMove);
+            Assert.AreEqual(0, (int)cmd.SideMove);
+
+            // the movement is used up by one tic
+            Assert.AreEqual(0, (int)Build(input).AngleTurn);
+
+            input.AddMouseTurn(-30);
+            Assert.IsTrue(Build(input).AngleTurn > 0, "moving the mouse left should turn the player left");
+        }
+
+        [TestMethod]
+        public void MouseNeverWalksEvenWithTheStrafeKeyHeld()
+        {
+            var input = new PlayerInput(new Config());
+            input.SetKey(DoomKey.LAlt, true); // the original frontend strafed with the mouse while this was held
+            input.AddMouseTurn(50);
+            var cmd = Build(input);
+            Assert.AreEqual(0, (int)cmd.SideMove);
+            Assert.AreEqual(0, (int)cmd.ForwardMove);
+            Assert.IsTrue(cmd.AngleTurn < 0, "the mouse still turns");
+        }
+
+        [TestMethod]
+        public void WasdWalksAndStrafesAndTheMouseAddsOnlyTurning()
+        {
+            var input = new PlayerInput(new Config());
+            input.SetKey(DoomKey.W, true);
+            input.SetKey(DoomKey.D, true);
+            input.AddMouseTurn(10);
+            var cmd = Build(input);
+            Assert.IsTrue(cmd.ForwardMove > 0, "W is forward");
+            Assert.IsTrue(cmd.SideMove > 0, "D is strafe right");
+            Assert.IsTrue(cmd.AngleTurn < 0);
+
+            input.ReleaseAll();
+            input.SetKey(DoomKey.S, true);
+            input.SetKey(DoomKey.A, true);
+            cmd = Build(input);
+            Assert.IsTrue(cmd.ForwardMove < 0, "S is back");
+            Assert.IsTrue(cmd.SideMove < 0, "A is strafe left");
+        }
+
+        [TestMethod]
+        public void LeftClickFiresRightClickUsesAndSpaceAlsoUses()
+        {
+            var input = new PlayerInput(new Config());
+            input.SetMouseButton(DoomMouseButton.Mouse1, true);
+            Assert.IsTrue((Build(input).Buttons & TicCmdButtons.Attack) != 0, "left click fires");
+            Assert.IsTrue((Build(input).Buttons & TicCmdButtons.Use) == 0);
+            input.SetMouseButton(DoomMouseButton.Mouse1, false);
+
+            input.SetMouseButton(DoomMouseButton.Mouse2, true);
+            Assert.IsTrue((Build(input).Buttons & TicCmdButtons.Use) != 0, "right click uses");
+            Assert.IsTrue((Build(input).Buttons & TicCmdButtons.Attack) == 0);
+            input.SetMouseButton(DoomMouseButton.Mouse2, false);
+
+            input.SetKey(DoomKey.Space, true);
+            Assert.IsTrue((Build(input).Buttons & TicCmdButtons.Use) != 0, "Space still uses");
+        }
+
+        [TestMethod]
+        public void ReleaseAllLetsGoOfKeysButtonsAndPendingMouseMovement()
+        {
+            var input = new PlayerInput(new Config());
+            input.SetKey(DoomKey.W, true);
+            input.SetMouseButton(DoomMouseButton.Mouse1, true);
+            input.AddMouseTurn(40);
+            input.ReleaseAll();
+            var cmd = Build(input);
+            Assert.AreEqual(0, (int)cmd.ForwardMove);
+            Assert.AreEqual(0, (int)cmd.AngleTurn);
+            Assert.AreEqual((byte)0, cmd.Buttons);
+            Assert.IsFalse(input.IsAnythingDown());
+        }
+
+        [TestMethod]
+        public void MouseTurnsThePlayerInTheGameWithoutWalking()
+        {
+            using (var session = Started())
+            {
+                var start = session.PlayerState;
+                session.AddMouseTurn(40);
+                Tics(session, 1);
+                var turned = session.PlayerState;
+                Assert.IsTrue(turned.Angle != start.Angle, "the player should have turned");
+                Assert.AreEqual((start.X, start.Y), (turned.X, turned.Y));
+            }
+        }
+
+        [TestMethod]
+        public void LeftClickShootsInTheGame()
+        {
+            using (var session = Started())
+            {
+                var before = session.Ammo;
+                session.PostMouseButton(DoomMouseButton.Mouse1, true);
+                Tics(session, 40); // the pistol takes about 17 tics to land its first shot, then fires about every 14
+                session.PostMouseButton(DoomMouseButton.Mouse1, false);
+                Assert.IsTrue(session.Ammo <= before - 2, $"holding left click for 40 tics should fire the pistol at least twice (had {before}, has {session.Ammo})");
             }
         }
     }
