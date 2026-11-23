@@ -55,6 +55,7 @@ internal static class EnemySprites
 			var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
 			var lumps = new List<(string Name, byte[] Data)>();
 			var done = new List<string>();
+			var gibs = MonsterSprites.GibAnimations(wad);
 
 			foreach (var (type, enemy) in Replacements)
 			{
@@ -65,7 +66,7 @@ internal static class EnemySprites
 				{
 					continue; // this game does not have that monster
 				}
-				// The dying and gibbed frames keep DOOM's own dead and mangled bodies; only the living poses get the enemy.
+				// Only the living poses get the enemy's picture; the dying and gibbed frames become DOOM's gibs (below).
 				var replaced = MonsterSprites.ReplacedFrames(type, letters);
 				var keptLetters = replaced.Select(f => f.Letter).ToList();
 				var requests = replaced.Select(MonsterSprites.Request).ToList();
@@ -83,8 +84,12 @@ internal static class EnemySprites
 				}
 				var built = MonsterSpriteBuilder.Build(sprite, keptLetters, frames, letters[0], height, palette);
 				lumps.AddRange(built);
+				// ...and the enemy turns into gibs when it dies: the dying and gibbed frames are DOOM's gib animations, eight variations of them.
+				var dying = MonsterSprites.Frames(type, letters).Where(f => f.Role == FrameRole.Death || f.Role == FrameRole.Gib).ToList();
+				var gibLumps = MonsterSpriteBuilder.DeathLumps(sprite, dying, gibs);
+				lumps.AddRange(gibLumps);
 				done.Add($"{type}={monster.Id.Entry}");
-				ModLog.Info("enemy", $"the {sprite} ({type}) is now {monster.Id.Entry}: {frames.Count} of {requests.Count} poses captured, {built.Count} pictures, scaled to {height} tall; its dead and mangled bodies stay DOOM's");
+				ModLog.Info("enemy", $"the {sprite} ({type}) is now {monster.Id.Entry}: {frames.Count} of {requests.Count} poses captured, {built.Count} pictures, scaled to {height} tall; {gibLumps.Count} gib pictures for its death");
 			}
 
 			if (lumps.Count == 0)

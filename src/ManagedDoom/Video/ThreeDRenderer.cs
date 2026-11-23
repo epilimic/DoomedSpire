@@ -2518,6 +2518,12 @@ namespace ManagedDoom.Video
                 // Choose a different rotation based on player view.
                 var ang = Geometry.PointToAngle(viewX, viewY, thingX, thingY);
                 var rot = (ang.Data - thing.Angle.Data + (uint)(Angle.Ang45.Data / 2) * 9) >> 29;
+                // DoomedSpire change: a corpse does not turn as the player walks round it; the eight pictures of its frame are eight variations (the mod's
+                // gibs), and which one it shows is fixed by the thing itself (src/Host/CorpseVariant.cs). Only frames the mod gave rotations to are affected.
+                if ((thing.Flags & MobjFlags.Corpse) != 0)
+                {
+                    rot = (uint)DoomedSpire.Host.CorpseVariant.Pick(thing);
+                }
                 lump = spriteFrame.Patches[rot];
                 flip = spriteFrame.Flip[rot];
             }

@@ -127,6 +127,50 @@ internal static class MonsterSprites
 	public static IReadOnlyList<MonsterFrame> ReplacedFrames(MobjType type, IReadOnlyList<char> letters) =>
 		Frames(type, letters).Where(f => f.Role != FrameRole.Death && f.Role != FrameRole.Gib).ToList();
 
+	/// <summary>The lump holding a frame seen from every side (for example TROOU0), or null if the game data has none.</summary>
+	public static string? FindLump(Wad wad, string sprite, char letter)
+	{
+		foreach (var info in wad.LumpInfos)
+		{
+			var name = info.Name;
+			if (info.Size > 0 && ((name.Length == 6 && name == sprite + letter + "0") || (name.Length == 8 && name.StartsWith(sprite, StringComparison.Ordinal) && name[6] == letter && name[7] == '0')))
+			{
+				return name;
+			}
+		}
+		return null;
+	}
+
+	/// <summary>
+	/// DOOM's own gib animations, as the pictures of each in order, ending on the heap: the player's, the imp's, the zombieman's and the shotgun guy's (the
+	/// frames each is gibbed through, from the engine's state tables). A set the game data does not have in full is left out.
+	/// </summary>
+	public static IReadOnlyList<IReadOnlyList<byte[]>> GibAnimations(Wad wad)
+	{
+		var sets = new List<IReadOnlyList<byte[]>>();
+		foreach (var type in new[] { MobjType.Player, MobjType.Troop, MobjType.Possessed, MobjType.Shotguy })
+		{
+			var sprite = SpriteName(type);
+			var chain = Frames(type, Letters(wad, sprite)).Where(f => f.Role == FrameRole.Gib).OrderBy(f => f.Index).ToList();
+			var pictures = new List<byte[]>();
+			foreach (var frame in chain)
+			{
+				var name = FindLump(wad, sprite, frame.Letter);
+				if (name == null)
+				{
+					pictures.Clear();
+					break;
+				}
+				pictures.Add(wad.ReadLump(name));
+			}
+			if (pictures.Count > 0)
+			{
+				sets.Add(pictures);
+			}
+		}
+		return sets;
+	}
+
 	/// <summary>
 	/// The creature's pose for a frame: standing and walking use its idle loop (spread over the loop), attacking its attack, being hurt its hurt, dying and
 	/// being gibbed its death (ending on the last pose). The names are the ones the game's creatures use; the first one a creature has is taken.
@@ -198,6 +242,30 @@ internal static class MonsterSpriteBuilder
 			var source = frames.TryGetValue(letter, out var f) && Edges(f.Image) != null ? f : reference;
 			var rendered = Render(source, scale, palette);
 			lumps.Add((sprite + letter + "0", DoomPatch.Encode(rendered.Width, rendered.Height, rendered.Left, rendered.Top, rendered.Pixels)));
+		}
+		return lumps;
+	}
+
+	/// <summary>
+	/// The dying and gibbed frames of a monster, each as eight variations: side 1 to 8 of the frame are the same moment of eight different gib animations
+	/// (<paramref name="gibs"/>, cycled if there are fewer than eight), the frame's place in its own chain (first to last) picking the moment, so the last
+	/// frame, the one that stays on the floor, is the heap. Named like <c>TROOI3</c>. Which side a corpse shows is chosen by <see cref="CorpseVariant"/>.
+	/// </summary>
+	public static IReadOnlyList<(string Name, byte[] Data)> DeathLumps(string sprite, IReadOnlyList<MonsterFrame> frames, IReadOnlyList<IReadOnlyList<byte[]>> gibs)
+	{
+		var lumps = new List<(string, byte[])>();
+		if (gibs.Count == 0)
+		{
+			return lumps;
+		}
+		foreach (var frame in frames)
+		{
+			for (var side = 1; side <= 8; side++)
+			{
+				var set = gibs[(side - 1) % gibs.Count];
+				var index = frame.Count <= 1 ? set.Count - 1 : (int)Math.Round(frame.Index * (set.Count - 1) / (double)(frame.Count - 1));
+				lumps.Add((sprite + frame.Letter + side, set[index]));
+			}
 		}
 		return lumps;
 	}

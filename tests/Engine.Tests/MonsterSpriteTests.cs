@@ -57,6 +57,87 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void TheGameHasFourGibAnimationsToDieInto()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var sets = MonsterSprites.GibAnimations(wad);
+                Assert.AreEqual(4, sets.Count, "the player's, the imp's, the zombieman's and the shotgun guy's");
+                Assert.IsTrue(sets.All(s => s.Count >= 6), "each is a number of frames: " + string.Join(",", sets.Select(s => s.Count)));
+                Assert.IsTrue(sets.All(s => s.All(p => Patch.FromData("gib", p).Width > 5)), "each frame is a picture");
+            }
+        }
+
+        [TestMethod]
+        public void ADyingFrameIsEightVariationsOfGibsAndTheLastOneIsTheHeap()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var sets = MonsterSprites.GibAnimations(wad);
+                var letters = MonsterSprites.Letters(wad, "TROO");
+                var dying = MonsterSprites.Frames(MobjType.Troop, letters).Where(f => f.Role == FrameRole.Death || f.Role == FrameRole.Gib).ToList();
+                var lumps = MonsterSpriteBuilder.DeathLumps("TROO", dying, sets);
+                Assert.AreEqual(dying.Count * 8, lumps.Count);
+                var path = WriteAddOn(lumps);
+                using (var withAddOn = new Wad(WadPath.Doom1Shareware, path))
+                {
+                    var imp = new SpriteLookup(withAddOn)[Sprite.TROO];
+                    foreach (var frame in dying)
+                    {
+                        var f = imp.Frames[frame.Letter - 'A'];
+                        Assert.IsTrue(f.Rotate, "frame " + frame.Letter + " has variations");
+                        Assert.AreEqual(8, f.Patches.Length);
+                    }
+                    // the last dying frame (what stays on the floor) is the last picture of each gib animation, in turn
+                    var last = dying.Where(f => f.Role == FrameRole.Death).OrderBy(f => f.Index).Last();
+                    var heaps = imp.Frames[last.Letter - 'A'].Patches.Select(p => (p.Width, p.Height)).ToList();
+                    var expected = Enumerable.Range(0, 8).Select(i => { var p = Patch.FromData("g", sets[i % sets.Count].Last()); return (p.Width, p.Height); }).ToList();
+                    Assert.IsTrue(heaps.SequenceEqual(expected), "the heaps");
+                    Assert.IsTrue(heaps.Distinct().Count() >= 3, "and they differ from each other");
+                    // the living frames and other monsters are not touched
+                }
+            }
+        }
+
+        [TestMethod]
+        public void ACorpseKeepsItsPictureAndDifferentCorpsesDiffer()
+        {
+            var picks = new HashSet<int>();
+            for (uint i = 0; i < 200; i++)
+            {
+                var pick = CorpseVariant.Mix(i * 64 << 16, (i * 37 + 11) << 16); // map positions are whole numbers of units in 16.16 fixed point
+                Assert.IsTrue(pick >= 0 && pick < 8);
+                Assert.AreEqual(pick, CorpseVariant.Mix(i * 64 << 16, (i * 37 + 11) << 16), "the same place gives the same answer");
+                picks.Add(pick);
+            }
+            Assert.AreEqual(8, picks.Count, "all eight variations come up");
+        }
+
+        [TestMethod]
+        public void AGameStartsAndRunsWithTheGibVariations()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var sets = MonsterSprites.GibAnimations(wad);
+                var all = new List<(string Name, byte[] Data)>();
+                foreach (var type in new[] { MobjType.Possessed, MobjType.Shotguy, MobjType.Troop, MobjType.Sergeant, MobjType.Bruiser })
+                {
+                    var sprite = MonsterSprites.SpriteName(type);
+                    var dying = MonsterSprites.Frames(type, MonsterSprites.Letters(wad, sprite)).Where(f => f.Role == FrameRole.Death || f.Role == FrameRole.Gib).ToList();
+                    all.AddRange(MonsterSpriteBuilder.DeathLumps(sprite, dying, sets));
+                }
+                var path = WriteAddOn(all);
+                using (var session = DoomSession.Create(WadPath.Doom1Shareware, null, new[] { path }))
+                {
+                    var rgba = new byte[session.Width * session.Height * 4];
+                    for (var i = 0; i < 200; i++) session.Tick();
+                    session.RenderFirstFrame(rgba);
+                    Assert.IsTrue(rgba.Any(b => b != 0));
+                }
+            }
+        }
+
+        [TestMethod]
         public void DeadAndMangledBodiesAreNotReplaced()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))
