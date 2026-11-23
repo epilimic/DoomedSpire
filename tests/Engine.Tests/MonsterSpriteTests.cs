@@ -57,6 +57,24 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void DeadAndMangledBodiesAreNotReplaced()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                foreach (var type in new[] { MobjType.Possessed, MobjType.Shotguy, MobjType.Troop, MobjType.Sergeant, MobjType.Bruiser })
+                {
+                    var letters = MonsterSprites.Letters(wad, MonsterSprites.SpriteName(type));
+                    var all = MonsterSprites.Frames(type, letters);
+                    var kept = MonsterSprites.ReplacedFrames(type, letters);
+                    Assert.IsTrue(kept.Count > 0 && kept.Count < all.Count, type + ": some frames are kept as DOOM's");
+                    Assert.IsFalse(kept.Any(f => f.Role == FrameRole.Death || f.Role == FrameRole.Gib), type + ": no dying or gibbed frame is replaced");
+                    Assert.IsTrue(kept.Any(f => f.Role == FrameRole.Walk) && kept.Any(f => f.Role == FrameRole.Attack) && kept.Any(f => f.Role == FrameRole.Pain), type + ": the living poses are");
+                    Assert.AreEqual(all.Count(f => f.Role != FrameRole.Death && f.Role != FrameRole.Gib), kept.Count);
+                }
+            }
+        }
+
+        [TestMethod]
         public void EveryMonsterOfTheSharewareGameHasFramesToReplace()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))

@@ -65,7 +65,14 @@ internal static class EnemySprites
 				{
 					continue; // this game does not have that monster
 				}
-				var requests = MonsterSprites.Frames(type, letters).Select(MonsterSprites.Request).ToList();
+				// The dying and gibbed frames keep DOOM's own dead and mangled bodies; only the living poses get the enemy.
+				var replaced = MonsterSprites.ReplacedFrames(type, letters);
+				var keptLetters = replaced.Select(f => f.Letter).ToList();
+				var requests = replaced.Select(MonsterSprites.Request).ToList();
+				if (requests.Count == 0)
+				{
+					continue;
+				}
 
 				var monster = enemy();
 				var frames = await EnemyCapture.CaptureAsync(host, monster, requests);
@@ -74,10 +81,10 @@ internal static class EnemySprites
 					ModLog.Info("enemy", $"{monster.Id.Entry} could not be drawn for the {sprite} ({type}), so it keeps DOOM's own picture (the lines above say why)");
 					continue;
 				}
-				var built = MonsterSpriteBuilder.Build(sprite, letters, frames, letters[0], height, palette);
+				var built = MonsterSpriteBuilder.Build(sprite, keptLetters, frames, letters[0], height, palette);
 				lumps.AddRange(built);
 				done.Add($"{type}={monster.Id.Entry}");
-				ModLog.Info("enemy", $"the {sprite} ({type}) is now {monster.Id.Entry}: {frames.Count} of {requests.Count} poses captured, {built.Count} pictures, scaled to {height} tall");
+				ModLog.Info("enemy", $"the {sprite} ({type}) is now {monster.Id.Entry}: {frames.Count} of {requests.Count} poses captured, {built.Count} pictures, scaled to {height} tall; its dead and mangled bodies stay DOOM's");
 			}
 
 			if (lumps.Count == 0)

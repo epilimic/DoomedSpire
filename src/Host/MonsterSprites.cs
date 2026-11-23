@@ -121,6 +121,13 @@ internal static class MonsterSprites
 	}
 
 	/// <summary>
+	/// The frames that get an enemy's picture: every one except the dying and gibbed ones, which keep DOOM's own dead and mangled bodies (an enemy's death
+	/// animation does not make a body that can lie on the floor).
+	/// </summary>
+	public static IReadOnlyList<MonsterFrame> ReplacedFrames(MobjType type, IReadOnlyList<char> letters) =>
+		Frames(type, letters).Where(f => f.Role != FrameRole.Death && f.Role != FrameRole.Gib).ToList();
+
+	/// <summary>
 	/// The creature's pose for a frame: standing and walking use its idle loop (spread over the loop), attacking its attack, being hurt its hurt, dying and
 	/// being gibbed its death (ending on the last pose). The names are the ones the game's creatures use; the first one a creature has is taken.
 	/// </summary>
