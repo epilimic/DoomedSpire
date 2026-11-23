@@ -31,11 +31,18 @@ internal sealed class DoomSession : IDisposable
 	/// <summary>True while the engine is playing its screen-change animation (the melt between screens).</summary>
 	public bool Wiping => doom.Wiping;
 
+	/// <summary>
+	/// How far the mouse turns the player: the engine's own scale, 0 to 15 (<c>Config.mouse_sensitivity</c>). The engine's default is 8, which felt too fast
+	/// with this mouse handling. It can be changed while playing, in DOOM's own options menu (the backtick key, then Options and Mouse Sensitivity);
+	/// it starts at this value each time DOOM is opened.
+	/// </summary>
+	internal const int MouseSensitivity = 5;
+
 	/// <summary>Starts the game straight into episode 1, map 1 on the WAD at <paramref name="iwadPath"/>. Throws if the file is missing or not a usable WAD.</summary>
 	public static DoomSession Create(string iwadPath)
 	{
 		var args = new CommandLineArgs(new[] { "-iwad", iwadPath, "-warp", "1", "1", "-nosound", "-nomusic", "-nomouse" });
-		var config = new Config();
+		var config = new Config { mouse_sensitivity = MouseSensitivity };
 		GameContent? content = null;
 		try
 		{

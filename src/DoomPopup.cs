@@ -22,6 +22,10 @@ internal static class DoomPopup
 	/// </summary>
 	private const int PopupLayer = 8;
 
+	/// <summary>The size of the picture on the 1920x1080 canvas, always 4:3 (DOOM's pixels are not square). The panel is built around it.</summary>
+	private const float PictureWidth = 1024f;
+	private const float PictureHeight = 768f;
+
 	public static void AttachTo(NMapScreen map)
 	{
 		if (map.GetNodeOrNull(ButtonName) != null)
@@ -110,10 +114,11 @@ internal static class DoomPopup
 			AnchorTop = 0.5f,
 			AnchorRight = 0.5f,
 			AnchorBottom = 0.5f,
-			OffsetLeft = -440f,
-			OffsetTop = -350f,
-			OffsetRight = 440f,
-			OffsetBottom = 350f,
+			// Room around the picture: 16 on each side, plus about 45 for the title row and spacing. A container grows if it needs more.
+			OffsetLeft = -(PictureWidth + 32f) / 2f,
+			OffsetTop = -(PictureHeight + 72f) / 2f,
+			OffsetRight = (PictureWidth + 32f) / 2f,
+			OffsetBottom = (PictureHeight + 72f) / 2f,
 		};
 		root.AddChild(panel);
 
@@ -136,7 +141,7 @@ internal static class DoomPopup
 		var screen = new ColorRect
 		{
 			Color = Colors.Black,
-			CustomMinimumSize = new Vector2(800, 600), // 4:3
+			CustomMinimumSize = new Vector2(PictureWidth, PictureHeight),
 			SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};

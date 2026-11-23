@@ -309,5 +309,21 @@ namespace ManagedDoomTest
                 Assert.IsTrue(session.Ammo <= before - 2, $"holding left click for 40 tics should fire the pistol at least twice (had {before}, has {session.Ammo})");
             }
         }
+
+        [TestMethod]
+        public void TheGameStartsWithTheLoweredMouseSensitivity()
+        {
+            using (var session = Started())
+            {
+                var start = session.PlayerState;
+                session.AddMouseTurn(40);
+                Tics(session, 1);
+                var turned = session.PlayerState;
+                // the engine's formula: round(0.5 * sensitivity * pixels) steps of 8 angle units (a short), which the player's 32-bit angle holds shifted up by 16
+                var steps = (int)Math.Round(0.5 * DoomSession.MouseSensitivity * 40, MidpointRounding.ToEven);
+                Assert.AreEqual((uint)(steps * 8) << 16, unchecked(start.Angle - turned.Angle));
+                Assert.IsTrue(DoomSession.MouseSensitivity < 8, "lower than the engine's default of 8");
+            }
+        }
     }
 }
