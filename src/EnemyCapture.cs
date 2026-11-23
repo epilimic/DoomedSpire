@@ -75,6 +75,11 @@ internal static class EnemyCapture
 
 			var state = sprite.GetAnimationState();
 			var skeleton = sprite.GetSkeleton();
+			if (skeleton == null)
+			{
+				ModLog.Info("enemy", $"{name} has no skeleton to pose");
+				return null;
+			}
 			state.SetTimeScale(0f); // the animation only moves when we say so
 
 			var frames = new Dictionary<char, CapturedFrame>();
