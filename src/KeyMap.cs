@@ -8,6 +8,13 @@ internal static class KeyMap
 {
 	public static DoomKey ToDoom(InputEventKey e)
 	{
+		// The backtick key stands in for DOOM's Esc (which opens DOOM's menu); the real Esc leaves DOOM, see DoomView. By position as well as by label,
+		// so it is the key under Esc on keyboards where that key is not labelled with a backtick.
+		if (e.Keycode == Key.Quoteleft || e.PhysicalKeycode == Key.Quoteleft)
+		{
+			return DoomKey.Escape;
+		}
+
 		// Keycode is the key as labelled (so a French keyboard's "W" is W); PhysicalKeycode is only the fallback.
 		var key = e.Keycode != Key.None ? e.Keycode : e.PhysicalKeycode;
 

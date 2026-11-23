@@ -16,10 +16,10 @@ namespace DoomedSpire;
 ///  - every frame comes from SceneTree.ProcessFrame, connected only while the game is running;
 ///  - keys and the mouse arrive through the GuiInput signal of the picture area, which holds keyboard focus while the game runs.
 ///
-/// Keys: every key goes to DOOM except Esc, which leaves DOOM and drops back to the map screen. Nothing reaches the game: the picture area accepts
+/// Keys: every key goes to DOOM except Esc, which leaves DOOM and drops back to the map screen. The backtick key is DOOM's own Esc (its menu). Nothing reaches the game: the picture area accepts
 /// every key event (stopping the game's _UnhandledInput hotkeys), and KeyLock (src/KeyLock.cs) stops the handlers that read keys before the GUI.
-/// Mouse: never captured, the cursor moves freely. While it is over the picture, moving it left and right turns the player, left click fires,
-/// right click uses. The mouse never walks the player (WASD does).
+/// Mouse: never captured, the cursor moves freely. While DOOM runs, ANY sideways movement of the cursor, wherever it is on the screen, turns the
+/// player (read from the cursor's position every frame). Left click (on the picture) fires, right click uses. The mouse never walks the player (WASD does).
 /// </summary>
 internal sealed class DoomView
 {
@@ -44,6 +44,7 @@ internal sealed class DoomView
 	private long lastTimestamp;
 	private double accumulator;
 	private bool windowWasUnfocused;
+	private float lastMouseX;
 	private int failures;
 
 	/// <summary>Called when DOOM itself wants to end (the player quit from DOOM's menu). The popup sets this to close itself.</summary>
@@ -113,6 +114,7 @@ internal sealed class DoomView
 			failures = 0;
 			accumulator = 0;
 			windowWasUnfocused = false;
+			lastMouseX = screen.GetViewport().GetMousePosition().X;
 			lastTimestamp = Stopwatch.GetTimestamp();
 			tree = screen.GetTree();
 			frameHandler = OnFrame;
@@ -186,9 +188,16 @@ internal sealed class DoomView
 					windowWasUnfocused = true;
 				}
 				lastTimestamp = Stopwatch.GetTimestamp();
+				lastMouseX = screen.GetViewport().GetMousePosition().X;
 				return;
 			}
 			windowWasUnfocused = false;
+
+			// The mouse turns the player wherever the cursor is: how far it moved sideways since the last frame. (Read here, not from mouse events,
+			// because events only come to the control under the cursor.)
+			var mouseX = screen.GetViewport().GetMousePosition().X;
+			current.AddMouseTurn(mouseX - lastMouseX);
+			lastMouseX = mouseX;
 
 			var now = Stopwatch.GetTimestamp();
 			var elapsed = (double)(now - lastTimestamp) / Stopwatch.Frequency;
@@ -235,7 +244,7 @@ internal sealed class DoomView
 
 	/// <summary>
 	/// Every input event that reaches the picture area. Each one is accepted, so nothing else in the game reacts to it.
-	/// Keys go to DOOM, except Esc. The mouse turns the player and shoots or uses; it does not walk.
+	/// Keys go to DOOM, except Esc. The mouse buttons shoot and use (turning is read every frame, see OnFrame).
 	/// </summary>
 	private void OnGuiInput(InputEvent inputEvent)
 	{
@@ -270,11 +279,6 @@ internal sealed class DoomView
 					{
 						current.PostKey(doomKey, key.Pressed);
 					}
-					break;
-
-				case InputEventMouseMotion motion:
-					screen.AcceptEvent();
-					current.AddMouseTurn(motion.Relative.X);
 					break;
 
 				case InputEventMouseButton button:
