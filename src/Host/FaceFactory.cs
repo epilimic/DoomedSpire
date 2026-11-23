@@ -42,8 +42,11 @@ internal static class FaceTuning
 	public static float Blood = 1f;
 }
 
-/// <summary>The numbers the face factory works from (<see cref="FaceTuning"/>'s, or fixed ones in the tests).</summary>
-internal readonly record struct FaceSettings(float CropLeft, float CropTop, float CropWidth, float CropHeight, float Damage, float Brightness, float Blood = 1f)
+/// <summary>
+/// The numbers the face factory works from (<see cref="FaceTuning"/>'s, or fixed ones in the tests). <paramref name="Neutral"/> makes every face the same
+/// colour, with no blood and no expression tints: only the head's position and angle differ (used for the sheet the player paints on).
+/// </summary>
+internal readonly record struct FaceSettings(float CropLeft, float CropTop, float CropWidth, float CropHeight, float Damage, float Brightness, float Blood = 1f, bool Neutral = false)
 {
 	public static FaceSettings Default => new(0f, 0f, 1f, 1f, 1f, 1f, 1f);
 
@@ -106,8 +109,16 @@ internal static class FaceFactory
 		var lumps = new List<(string, byte[])>();
 		foreach (var (name, kind, pain) in Faces)
 		{
-			var canonical = Render(baseImage, kind, pain, settings, palette);
+			var shaded = Shade(baseImage, kind, pain, settings);
 			var s = spec(name);
+			if (kind == FaceKind.TurnLeft || kind == FaceKind.TurnRight)
+			{
+				// the turned head is drawn straight into this lump's own rectangle (it is wider than the others, to hold the turned head)
+				var turned = Quantize(TurnHead(shaded, kind == FaceKind.TurnRight, reference, s), palette);
+				lumps.Add((name, DoomPatch.Encode(s.Width, s.Height, s.Left, s.Top, turned)));
+				continue;
+			}
+			var canonical = Quantize(shaded, palette);
 			// spare room in this lump, left and right of where the face sits (the turning faces are wider than the straight ones, but on different sides)
 			var roomLeft = s.Left - reference.Left;
 			var roomRight = (-s.Left + s.Width) - (-reference.Left + reference.Width);
@@ -129,8 +140,8 @@ internal static class FaceFactory
 	}
 
 	/// <summary>
-	/// How far each look moves the face, in pixels. The turns move it toward the side where their lump has spare room (up to 3 pixels), so nothing is cut off;
-	/// the straight looks have no spare room, so they shuffle one pixel and lose at most one pixel column at the edge, which on a round face is mostly outline.
+	/// How far each look moves the face, in pixels (the turns are not shifted: <see cref="TurnHead"/> turns the head). The straight looks have no spare room, so
+	/// they shuffle one pixel and lose at most one pixel column at the edge, which on a round face is mostly outline.
 	/// </summary>
 	private static (int Dx, int Dy) LookShift(FaceKind kind, int roomLeft, int roomRight)
 	{
@@ -138,13 +149,6 @@ internal static class FaceFactory
 		{
 			case FaceKind.Straight1: return (-1, 0);
 			case FaceKind.Straight2: return (1, 0);
-			case FaceKind.TurnLeft:
-			case FaceKind.TurnRight:
-				if (roomRight > 0 || roomLeft > 0)
-				{
-					return roomRight >= roomLeft ? (Math.Min(3, roomRight), 0) : (-Math.Min(3, roomLeft), 0);
-				}
-				return kind == FaceKind.TurnRight ? (1, 0) : (-1, 0);
 			case FaceKind.Ouch: return (0, -1);
 			default: return (0, 0);
 		}
@@ -244,15 +248,16 @@ internal static class FaceFactory
 
 	// ---------------------------------------------------------------- one face
 
-	/// <summary>The canonical face for one expression: palette indices at the reference size, -1 where transparent. Not yet moved for the look.</summary>
-	private static int[] Render(Image baseImage, FaceKind kind, int pain, FaceSettings settings, DoomPalette palette)
+	/// <summary>The face for one expression at the reference size, coloured for its health level and expression (and with its blood marks). Not yet moved for the look.</summary>
+	private static Image Shade(Image baseImage, FaceKind kind, int pain, FaceSettings settings)
 	{
 		var image = baseImage.Copy();
 		var width = image.Width;
 		var height = image.Height;
 
 		// how hurt: 0 (health 100 to 80) to 1 (below 20) at normal strength; the setting scales it
-		var hurt = Math.Clamp(pain / 4f * settings.Damage, 0f, 2f);
+		var neutral = settings.Neutral;
+		var hurt = neutral ? 0f : Math.Clamp(pain / 4f * settings.Damage, 0f, 2f);
 		var saturation = 1f;
 		var brightness = settings.Brightness;
 		float addR = 0, addG = 0, addB = 0;
@@ -260,7 +265,7 @@ internal static class FaceFactory
 		var mix = 0f;
 		var extraBlood = 0;
 
-		switch (kind)
+		switch (neutral ? FaceKind.Straight0 : kind)
 		{
 			case FaceKind.Ouch:
 				hurt = Math.Min(2f, hurt + 0.7f);
@@ -304,7 +309,7 @@ internal static class FaceFactory
 		// blood marks: the same places at the same health level, whatever the expression, so the wounds stay put as the face changes
 		DrawBlood(image, (int)Math.Round((2.2f * hurt + extraBlood) * Math.Max(0f, settings.Blood)), seed: (uint)(pain * 7919 + 17));
 
-		if (kind == FaceKind.Dead)
+		if (kind == FaceKind.Dead && !neutral)
 		{
 			for (var y = 2 * height / 3; y < height; y++)
 			{
@@ -316,8 +321,14 @@ internal static class FaceFactory
 			}
 		}
 
-		var pixels = new int[width * height];
-		for (var i = 0; i < width * height; i++)
+		return image;
+	}
+
+	/// <summary>A picture matched to DOOM's palette: palette indices, -1 where (mostly) transparent.</summary>
+	private static int[] Quantize(Image image, DoomPalette palette)
+	{
+		var pixels = new int[image.Width * image.Height];
+		for (var i = 0; i < pixels.Length; i++)
 		{
 			if (image.A[i] < 0.5f)
 			{
@@ -329,6 +340,48 @@ internal static class FaceFactory
 			pixels[i] = palette.Nearest(back + (image.R[i] - back) * a, back + (image.G[i] - back) * a, back + (image.B[i] - back) * a);
 		}
 		return pixels;
+	}
+
+	/// <summary>How far the features of the turning faces move toward the side they turn to, as a fraction of half the head's width (0 = not at all, 0.5 = the most possible).</summary>
+	private const double TurnAmount = 0.35;
+
+	/// <summary>
+	/// The face with the head turned toward one side, drawn into the rectangle of one of the turning lumps. The head's outline stays where it is and what is inside
+	/// it slides toward the side the head turns to: the features move over, the far side is squeezed and the near side stretched (across the head, a position
+	/// <c>u</c> from -1 to 1 goes to <c>u + d (1 - u squared)</c>, which moves the middle by <c>d</c> and leaves both edges where they are). The rows stay where they are.
+	/// </summary>
+	private static Image TurnHead(Image face, bool toRight, PatchSpec reference, PatchSpec lump)
+	{
+		var result = new Image(lump.Width, lump.Height);
+		var d = (toRight ? 1 : -1) * TurnAmount;
+		var half = face.Width / 2.0;
+		const int samples = 4; // across each output pixel, averaged so squeezed columns do not look ragged
+		for (var py = 0; py < lump.Height; py++)
+		{
+			var fy = py - lump.Top + reference.Top; // the row of the straight face that is on this screen row
+			if (fy < 0 || fy >= face.Height) { continue; }
+			for (var px = 0; px < lump.Width; px++)
+			{
+				var fx = px - lump.Left + reference.Left; // the column of the straight face that is on this screen column
+				double sumR = 0, sumG = 0, sumB = 0, sumA = 0;
+				for (var k = 0; k < samples; k++)
+				{
+					var t = (fx + (k + 0.5) / samples - half) / half; // -1 at the left edge of the head, +1 at the right
+					if (Math.Abs(t) > 1) { continue; }
+					var u = Math.Clamp((1 - Math.Sqrt(Math.Max(0, 1 - 4 * d * (t - d)))) / (2 * d), -1, 1); // where on the straight face this point comes from
+					var column = Math.Min(face.Width - 1, (int)(half + half * u));
+					var o = fy * face.Width + column;
+					var a = face.A[o];
+					sumR += face.R[o] * a; sumG += face.G[o] * a; sumB += face.B[o] * a; sumA += a;
+				}
+				if (sumA > 0)
+				{
+					var o = py * lump.Width + px;
+					result.R[o] = (float)(sumR / sumA); result.G[o] = (float)(sumG / sumA); result.B[o] = (float)(sumB / sumA); result.A[o] = (float)(sumA / samples);
+				}
+			}
+		}
+		return result;
 	}
 
 	private static void DrawBlood(Image image, int marks, uint seed)

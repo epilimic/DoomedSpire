@@ -222,21 +222,76 @@ namespace ManagedDoomTest
             Assert.IsTrue(shape.Count > 300, "the face really fills its place");
         }
 
-        [TestMethod]
-        public void TurningFacesAreNotCutOffAndStraightLooksLoseAtMostAColumnOfEdge()
+        /// <summary>The average column of the white pixels (the eyes of the test portrait) on screen, or NaN if there are none.</summary>
+        private static double EyeColumn(byte[] lump, DoomPalette palette)
         {
-            var faces = Faces(FaceSettings.Default);
-            for (var level = 0; level < 5; level++)
+            var columns = OnScreen(lump).Where(kv => { var (r, g, b) = palette.Colour(kv.Value); return Math.Min(r, Math.Min(g, b)) > 190; }).Select(kv => (double)kv.Key.U).ToList();
+            return columns.Count == 0 ? double.NaN : columns.Average();
+        }
+
+        [TestMethod]
+        public void TurningFacesTurnTheHeadTowardTheirSideAndStraightLooksLoseAtMostAColumnOfEdge()
+        {
+            var (faces, palette, _, wad) = Setup(FaceSettings.Default with { Damage = 0f, Blood = 0f });
+            using (wad)
             {
-                var whole = OnScreen(Lump(faces, "STFST" + level + "0")).Count;
-                foreach (var turn in new[] { "STFTR" + level + "0", "STFTL" + level + "0" })
+                for (var level = 0; level < 5; level++)
                 {
-                    Assert.AreEqual(whole, OnScreen(Lump(faces, turn)).Count, turn + " shows all of the face");
+                    var straight = Lump(faces, "STFST" + level + "0");
+                    var whole = OnScreen(straight).Count;
+                    var right = Lump(faces, "STFTR" + level + "0");
+                    var left = Lump(faces, "STFTL" + level + "0");
+                    // the head is turned, not cut off: it still fills about what the straight one does, with the outline where it was...
+                    foreach (var turn in new[] { right, left })
+                    {
+                        var shown = OnScreen(turn).Count;
+                        Assert.IsTrue(shown > whole * 0.9 && shown < whole * 1.1, $"level {level}: a turned head covers {shown} pixels, a straight one {whole}");
+                    }
+                    // ...and the features have moved toward the side it turns to
+                    var eyes = EyeColumn(straight, palette);
+                    Assert.IsFalse(double.IsNaN(eyes), "the test portrait's eyes are found");
+                    Assert.IsTrue(EyeColumn(right, palette) > eyes + 1.5, $"level {level}: turning right moves the eyes right ({eyes:0.0} to {EyeColumn(right, palette):0.0})");
+                    Assert.IsTrue(EyeColumn(left, palette) < eyes - 1.5, $"level {level}: turning left moves the eyes left ({eyes:0.0} to {EyeColumn(left, palette):0.0})");
+                    foreach (var look in new[] { "STFST" + level + "1", "STFST" + level + "2" })
+                    {
+                        var shown = OnScreen(Lump(faces, look)).Count;
+                        Assert.IsTrue(whole - shown >= 0 && whole - shown <= 20, $"{look} loses {whole - shown} pixels of {whole}: at most one column of the edge");
+                    }
                 }
-                foreach (var look in new[] { "STFST" + level + "1", "STFST" + level + "2" })
+            }
+        }
+
+        /// <summary>The average colour of a face's pixels.</summary>
+        private static (double R, double G, double B) Average(byte[] lump, DoomPalette palette)
+        {
+            var colours = OnScreen(lump).Values.Select(palette.Colour).ToList();
+            return (colours.Average(c => (double)c.R), colours.Average(c => (double)c.G), colours.Average(c => (double)c.B));
+        }
+
+        [TestMethod]
+        public void TheNeutralSettingGivesEveryFaceTheSameColourAndNoBlood()
+        {
+            var (faces, palette, _, wad) = Setup(FaceSettings.Default with { Neutral = true });
+            using (wad)
+            {
+                var plain = Average(Lump(faces, "STFST00"), palette);
+                foreach (var (name, _, _) in FaceFactory.Faces)
                 {
-                    var shown = OnScreen(Lump(faces, look)).Count;
-                    Assert.IsTrue(whole - shown >= 0 && whole - shown <= 20, $"{look} loses {whole - shown} pixels of {whole}: at most one column of the edge");
+                    var (r, g, b) = Average(Lump(faces, name), palette);
+                    Assert.IsTrue(Math.Abs(r - plain.R) < 6 && Math.Abs(g - plain.G) < 6 && Math.Abs(b - plain.B) < 6, $"{name} is the same colour overall as the plain face: ({r:0},{g:0},{b:0}) against ({plain.R:0},{plain.G:0},{plain.B:0})");
+                }
+                // the same pixel of the same face, whatever the health: identical (no paleness, redness or marks)
+                var healthy = OnScreen(Lump(faces, "STFST00"));
+                for (var i = 1; i < 5; i++)
+                {
+                    var other = OnScreen(Lump(faces, "STFST" + i + "0"));
+                    Assert.IsTrue(healthy.Count == other.Count && healthy.All(kv => other.TryGetValue(kv.Key, out var v) && v == kv.Value), "level " + i + " is the same picture as level 0");
+                }
+                // and the grin, rampage and god faces are the straight face exactly
+                foreach (var name in new[] { "STFEVL4", "STFKILL4", "STFGOD0" })
+                {
+                    var same = OnScreen(Lump(faces, name));
+                    Assert.IsTrue(healthy.Count == same.Count && healthy.All(kv => same.TryGetValue(kv.Key, out var v) && v == kv.Value), name + " is the same picture as the straight face");
                 }
             }
         }

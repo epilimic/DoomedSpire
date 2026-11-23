@@ -56,10 +56,10 @@ internal static class PlayerFace
 			Directory.CreateDirectory(folder);
 			var id = character.Id.Entry.ToLowerInvariant();
 
-			// A sheet to paint on: every face at one picture pixel per face pixel on a transparent background, and never any blood (that is for the player
-			// to add). It is made again at every new game, so it is never the file that holds the player's work (that is the "painted" one below).
+			// A sheet to paint on: every face at one picture pixel per face pixel on a transparent background, , the same colour in every one (no paleness, redness or tints) and never any
+			// blood: only the head's position and angle differ, as in Doomguy's own faces (the colour and blood are for the player to add). It is made again at every new game, so it is never the file that holds the player's work (that is the "painted" one below).
 			var toPaint = Path.Combine(folder, id + "-faces-to-paint.png");
-			WriteSheet(FaceFactory.Sheet(FaceFactory.Build(picture, spec, palette, settings with { Blood = 0f }), palette, 1, transparentBackground: true), toPaint);
+			WriteSheet(FaceFactory.Sheet(FaceFactory.Build(picture, spec, palette, settings with { Blood = 0f, Neutral = true }), palette, 1, transparentBackground: true), toPaint);
 
 			// The player's own painted version of that sheet, if they saved one under this name, is used instead of the generated faces.
 			var painted = Path.Combine(folder, id + "-faces-painted.png");
