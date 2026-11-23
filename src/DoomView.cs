@@ -33,7 +33,7 @@ internal sealed class DoomView
 	private const int MaxFailuresBeforeStopping = 5;
 
 	private readonly Control screen;
-	private readonly Button closeButton;
+	private readonly Godot.Button closeButton;
 	private readonly TextureRect picture;
 	private readonly Label message;
 
@@ -58,7 +58,7 @@ internal sealed class DoomView
 	/// Adds the picture and the message label to <paramref name="screen"/>, the 4:3 black area of the popup. <paramref name="mouseArea"/> is the full-screen
 	/// control that receives every mouse click; <paramref name="closeButton"/> is hidden while a game runs, so a click meant for DOOM cannot close the popup.
 	/// </summary>
-	public DoomView(Control screen, Control mouseArea, Button closeButton)
+	public DoomView(Control screen, Control mouseArea, Godot.Button closeButton)
 	{
 		this.screen = screen;
 		this.closeButton = closeButton;
