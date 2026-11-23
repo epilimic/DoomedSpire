@@ -34,11 +34,11 @@ internal sealed class DoomSession : IDisposable
 	public bool Wiping => doom.Wiping;
 
 	/// <summary>
-	/// How far the mouse turns the player: the engine's own scale, 0 to 15 (<c>Config.mouse_sensitivity</c>). The engine's default is 8, which felt too fast
-	/// with this mouse handling. It can be changed while playing, in DOOM's own options menu (the backtick key, then Options and Mouse Sensitivity);
-	/// it starts at this value each time DOOM is opened.
+	/// How far the mouse turns the player: the engine's own scale, 0 to 15 (<c>Config.mouse_sensitivity</c>). The engine's default is 8; the owner found that
+	/// too fast with this mouse handling and brought it down in steps (8, then 5, now 1). It can be changed while playing, in DOOM's own options menu (the
+	/// backtick key, then Options and Mouse Sensitivity); it starts at this value each time a new game starts.
 	/// </summary>
-	internal const int MouseSensitivity = 5;
+	internal const int MouseSensitivity = 1;
 
 	/// <summary>Starts the game straight into episode 1, map 1 on the WAD at <paramref name="iwadPath"/>. Throws if the file is missing or not a usable WAD.</summary>
 	public static DoomSession Create(string iwadPath, AudioOptions? audioOptions = null)

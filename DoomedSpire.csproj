@@ -33,7 +33,8 @@
 
   <!-- Files baked into the dll (keep the mod folder to the dll + manifest only: the game treats EVERY .json in a mod folder as a manifest). -->
   <ItemGroup>
-    <!-- Pictures: put them in assets/ and uncomment (see solutions/embedded-art): <EmbeddedResource Include="assets/**/*.png;assets/**/*.webp" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" /> -->
+    <!-- Pictures: put them in assets/ (see solutions/embedded-art). Loaded with EmbeddedArt.Get("name.png"). -->
+    <EmbeddedResource Include="assets/**/*.png;assets/**/*.webp" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
     <!-- DOOM's built-in game data (the shareware DOOM1.WAD, embedded unmodified) and its license notice, see assets/doom/README.md. Written to disk the first time DOOM opens (src/BuiltInWad.cs). -->
     <EmbeddedResource Include="assets/doom/doom1.wad" LogicalName="doom1.wad" />
     <EmbeddedResource Include="assets/doom/LICENSE.txt" LogicalName="doom1-LICENSE.txt" />

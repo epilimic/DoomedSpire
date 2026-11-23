@@ -1,3 +1,5 @@
+using System;
+using DoomedSpire.Host;
 using Godot;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
@@ -22,9 +24,6 @@ internal static class DoomPopup
 	/// </summary>
 	private const int PopupLayer = 8;
 
-	/// <summary>The size of the picture on the 1920x1080 canvas, always 4:3 (DOOM's pixels are not square). The panel is built around it.</summary>
-	private const float PictureWidth = 1024f;
-	private const float PictureHeight = 768f;
 
 	public static void AttachTo(NMapScreen map)
 	{
@@ -34,8 +33,32 @@ internal static class DoomPopup
 			return;
 		}
 
-		var popup = BuildPopup(out var closeButton, out var view, out var layer);
+		var popup = BuildPopup(out var closeButton, out var view, out var layer, out var refreshLayout);
 		var button = BuildButton();
+
+		// The monitor and the game are placed from the tunable numbers (CrtTuning) every frame while the popup is showing, so a change in the VfxSpawner
+		// tuner shows at once. A per-frame callback: guarded, and its failures are logged in a shrinking way.
+		Action layoutEveryFrame = () =>
+		{
+			try
+			{
+				refreshLayout();
+			}
+			catch (Exception e)
+			{
+				ModLog.Fail("layout", "placing the monitor and the game", e);
+			}
+		};
+		SceneTree? layoutTree = null;
+
+		void StopLayoutUpdates()
+		{
+			if (layoutTree != null && GodotObject.IsInstanceValid(layoutTree))
+			{
+				layoutTree.ProcessFrame -= layoutEveryFrame;
+			}
+			layoutTree = null;
+		}
 
 		void SetOpen(bool open)
 		{
@@ -47,10 +70,14 @@ internal static class DoomPopup
 			ModLog.Info("map", open ? "popup opened" : "popup closed");
 			if (open)
 			{
+				layoutEveryFrame(); // in place before the first frame is drawn
+				layoutTree = popup.GetTree();
+				layoutTree.ProcessFrame += layoutEveryFrame;
 				view.Start();
 			}
 			else
 			{
+				StopLayoutUpdates();
 				view.Suspend(); // the game stays where it is; opening again carries on
 			}
 		}
@@ -61,11 +88,14 @@ internal static class DoomPopup
 		// The map screen's own Closed signal (NMapScreen.cs, emitted at the start of Close) also closes the popup,
 		// so the player is never left inside it while the game moves on.
 		map.Closed += () => ModLog.Try("map", "closing the popup with the map", () => SetOpen(false));
+		// The run is over when the map screen leaves the tree: only then is a paused game thrown away.
+		map.TreeExited += () => ModLog.Try("map", "ending DOOM with the run", () =>
+		{
+			StopLayoutUpdates();
+			view.Shutdown();
+		});
 
 		map.AddChildSafely(button);
-		// The run is over when the map screen leaves the tree: only then is a paused game thrown away.
-		map.TreeExited += () => ModLog.Try("map", "ending DOOM with the run", view.Shutdown);
-
 		map.AddChildSafely(layer);
 		ModLog.Info("map", "DOOM button added to the map screen");
 	}
@@ -94,11 +124,13 @@ internal static class DoomPopup
 	}
 
 	/// <summary>
-	/// A full-screen dimmed backdrop and a centred panel with a title, a Close button and a 4:3 area for the picture, all on a high canvas layer.
-	/// The full-screen root is the only thing that takes mouse events (everything inside it ignores the mouse, except the Close button, which
-	/// DoomView hides while a game runs), so a click anywhere on the screen lands on the root and nothing else in the game can be clicked.
+	/// A full-screen dimmed backdrop, the picture of an old monitor (assets/crt.png) and the game on its glass, all on a high canvas layer. Nothing is in a
+	/// container: the monitor and the game are placed by absolute position and size (<see cref="CrtLayout"/>), so nothing can reflow or change size when the
+	/// text, the Close button or the game picker changes: the picture of the game stays exactly where it is.
+	/// The full-screen root is the only thing that takes mouse events (everything inside it ignores the mouse, except the Close button, which DoomView
+	/// hides while a game runs), so a click anywhere on the screen lands on the root and nothing else in the game can be clicked.
 	/// </summary>
-	private static Control BuildPopup(out Button closeButton, out DoomView view, out CanvasLayer layer)
+	private static Control BuildPopup(out Button closeButton, out DoomView view, out CanvasLayer layer, out Action refreshLayout)
 	{
 		layer = new CanvasLayer { Name = LayerName, Layer = PopupLayer };
 
@@ -110,47 +142,64 @@ internal static class DoomPopup
 		dim.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 		root.AddChild(dim);
 
-		var panel = new PanelContainer
+		var monitorPicture = EmbeddedArt.Get("crt.png");
+		if (monitorPicture == null)
 		{
-			MouseFilter = Control.MouseFilterEnum.Ignore,
-			AnchorLeft = 0.5f,
-			AnchorTop = 0.5f,
-			AnchorRight = 0.5f,
-			AnchorBottom = 0.5f,
-			// Room around the picture: 16 on each side, plus about 45 for the title row and spacing. A container grows if it needs more.
-			OffsetLeft = -(PictureWidth + 32f) / 2f,
-			OffsetTop = -(PictureHeight + 72f) / 2f,
-			OffsetRight = (PictureWidth + 32f) / 2f,
-			OffsetBottom = (PictureHeight + 72f) / 2f,
-		};
-		root.AddChild(panel);
-
-		var margin = new MarginContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-		foreach (var side in new[] { "margin_left", "margin_top", "margin_right", "margin_bottom" })
-		{
-			margin.AddThemeConstantOverride(side, 16);
+			ModLog.OnceInfo("layout", "no-monitor", "the monitor picture (crt.png) could not be loaded from the dll; the game is shown without a frame");
 		}
-		panel.AddChild(margin);
-
-		var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-		margin.AddChild(box);
-
-		var header = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-		box.AddChild(header);
-		header.AddChild(new Label { Text = "Doomed Spire", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
-		closeButton = new Button { Text = "Close", FocusMode = Control.FocusModeEnum.None };
-		header.AddChild(closeButton);
-
-		var screen = new ColorRect
+		var monitor = new TextureRect
 		{
-			Color = Colors.Black,
-			CustomMinimumSize = new Vector2(PictureWidth, PictureHeight),
-			SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+			Name = "DoomedSpireMonitor",
+			Texture = monitorPicture,
+			ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+			StretchMode = TextureRect.StretchModeEnum.Scale,
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};
-		box.AddChild(screen);
+		root.AddChild(monitor);
+
+		// The glass: the game is drawn here, on top of the monitor picture. Its position and size are set by refreshLayout.
+		var screen = new ColorRect { Name = "DoomedSpireGame", Color = Colors.Black, MouseFilter = Control.MouseFilterEnum.Ignore };
+		root.AddChild(screen);
+
+		// Top right of the screen, out of the way. Only shown while no game runs (the error and picker states), so a click meant for DOOM cannot close it.
+		closeButton = new Button
+		{
+			Text = "Close",
+			FocusMode = Control.FocusModeEnum.None,
+			CustomMinimumSize = new Vector2(140, 44),
+			AnchorLeft = 1f,
+			AnchorTop = 0f,
+			AnchorRight = 1f,
+			AnchorBottom = 0f,
+			OffsetLeft = -176f,
+			OffsetTop = 24f,
+			OffsetRight = -36f,
+			OffsetBottom = 68f,
+			GrowHorizontal = Control.GrowDirection.Begin,
+		};
+		root.AddChild(closeButton);
 
 		view = new DoomView(screen, root, closeButton);
+
+		var lastSize = Vector2.Zero;
+		var lastValues = new float[7];
+		refreshLayout = () =>
+		{
+			var size = root.Size;
+			var values = new[] { CrtTuning.Scale, CrtTuning.OffsetX, CrtTuning.OffsetY, CrtTuning.ScreenLeft, CrtTuning.ScreenTop, CrtTuning.ScreenWidth, CrtTuning.ScreenHeight };
+			if (size == lastSize && values.AsSpan().SequenceEqual(lastValues))
+			{
+				return;
+			}
+			lastSize = size;
+			lastValues = values;
+
+			var (monitorBox, gameBox) = CrtLayout.Current(size.X, size.Y);
+			monitor.Position = new Vector2(monitorBox.X, monitorBox.Y);
+			monitor.Size = new Vector2(monitorBox.Width, monitorBox.Height);
+			screen.Position = new Vector2(gameBox.X, gameBox.Y);
+			screen.Size = new Vector2(gameBox.Width, gameBox.Height);
+		};
 
 		return root;
 	}

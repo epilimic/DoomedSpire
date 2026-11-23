@@ -23,6 +23,7 @@ internal sealed class PlayerInput : IUserInput
 	private readonly bool[] weaponKeys = new bool[7];
 	private int turnHeld;
 	private double mouseTurn;
+	private double mouseRemainder;
 
 	public PlayerInput(Config config)
 	{
@@ -57,6 +58,7 @@ internal sealed class PlayerInput : IUserInput
 		Array.Clear(down);
 		Array.Clear(mouseDown);
 		mouseTurn = 0;
+		mouseRemainder = 0;
 	}
 
 	public bool IsAnythingDown() => down.Any(d => d) || mouseDown.Any(d => d);
@@ -203,7 +205,11 @@ internal sealed class PlayerInput : IUserInput
 
 		// Mouse: turning only, whatever else is held. (The original also moved forward/back with the mouse's up/down and strafed with it while
 		// the strafe key was held; both are left out on purpose.)
-		var mouseSteps = (int)MathF.Round(0.5f * config.mouse_sensitivity * (float)mouseTurn);
+		// At a low sensitivity one pixel is less than one turning step, so what is left over after rounding is kept for the next tic instead of being lost;
+		// otherwise slow movements would do nothing at all.
+		var wanted = 0.5 * config.mouse_sensitivity * mouseTurn + mouseRemainder;
+		var mouseSteps = (int)Math.Round(wanted);
+		mouseRemainder = wanted - mouseSteps;
 		mouseTurn = 0;
 		cmd.AngleTurn -= (short)Math.Clamp(mouseSteps * 0x8, -short.MaxValue / 2, short.MaxValue / 2);
 
@@ -217,6 +223,7 @@ internal sealed class PlayerInput : IUserInput
 	{
 		turnHeld = 0;
 		mouseTurn = 0;
+		mouseRemainder = 0;
 	}
 
 	// The cursor is never captured: it stays free. The popup only reports its movement while it is over the picture.

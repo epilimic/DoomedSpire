@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using DoomedSpire.Host;
 using Godot;
 using ManagedDoom;
@@ -31,6 +32,13 @@ internal sealed class DoomView
 	private const double TicSeconds = 1.0 / 35.0;
 	private const int MaxFailuresBeforeStopping = 5;
 
+	/// <summary>
+	/// A canvas layer at or above this number, visible and with something visible on it, is a tool open on top of DOOM (VfxSpawner's menu is on layer 128). DOOM
+	/// steps aside for it. Below this: the game's own layers (everything on 0, the dev console on 10, which stays visible even when its panel is closed) and
+	/// DOOM's own (8).
+	/// </summary>
+	private const int OverlayLayerThreshold = 100;
+
 	/// <summary>The width of the game picker's buttons, on the 1920x1080 canvas (the picture area is 1024 wide).</summary>
 	private const float PickerWidth = 720f;
 
@@ -57,6 +65,10 @@ internal sealed class DoomView
 	private Input.MouseModeEnum mouseModeBefore;
 	private bool mouseCaptured;
 	private bool escapeWasDown;
+	private bool yielding;
+	private int overlayCheckCountdown;
+	private bool overlayOpen;
+	private readonly CanvasLayer? ourLayer;
 	private bool active;
 	private bool endGame;
 	private AudioOutput? audioOutput;
@@ -73,6 +85,7 @@ internal sealed class DoomView
 	{
 		this.screen = screen;
 		this.closeButton = closeButton;
+		ourLayer = mouseArea.GetParent() as CanvasLayer;
 
 		// DOOM's pixels are not square: its 640x400 picture is meant to be shown as 4:3, so the picture is stretched to fill the whole area.
 		picture = new TextureRect
@@ -280,6 +293,9 @@ internal sealed class DoomView
 		accumulator = 0;
 		windowWasUnfocused = false;
 		escapeWasDown = false;
+		yielding = false;
+		overlayOpen = false;
+		overlayCheckCountdown = 0;
 		lastTimestamp = Stopwatch.GetTimestamp();
 
 		var (soundGain, musicGain) = GameVolume.Read();
@@ -317,6 +333,7 @@ internal sealed class DoomView
 			return;
 		}
 		active = false;
+		yielding = false;
 
 		try
 		{
@@ -411,6 +428,38 @@ internal sealed class DoomView
 				return;
 			}
 			windowWasUnfocused = false;
+
+			// A tool opened on top of DOOM (the VfxSpawner tuner, say): the mouse and the keyboard are the tool's until it closes, and the game waits.
+			if (ToolIsOpenOnTop())
+			{
+				if (!yielding)
+				{
+					yielding = true;
+					current.ReleaseAllInput();
+					KeyLock.Active = false;
+					closeButton.Visible = true; // always a way out, whatever the detection says
+					if (Input.MouseMode == Input.MouseModeEnum.Captured)
+					{
+						Input.MouseMode = mouseModeBefore == Input.MouseModeEnum.Captured ? Input.MouseModeEnum.Visible : mouseModeBefore;
+					}
+					if (screen.HasFocus())
+					{
+						screen.ReleaseFocus();
+					}
+					ModLog.Info("game", "a tool is open on top of DOOM; the game waits and the mouse and keys are the tool's until it closes");
+				}
+				lastTimestamp = Stopwatch.GetTimestamp();
+				return;
+			}
+			if (yielding)
+			{
+				yielding = false;
+				KeyLock.Active = true;
+				closeButton.Visible = false;
+				escapeWasDown = false;
+				lastTimestamp = Stopwatch.GetTimestamp();
+				ModLog.Info("game", "the tool closed; the game carries on");
+			}
 
 			// Keep the mouse captured. The game sets the mouse mode itself whenever it shows or hides its cursor (NCursorManager.RefreshCursorShown),
 			// which would undo it, so it is put back every frame.
@@ -542,6 +591,37 @@ internal sealed class DoomView
 		{
 			ModLog.Fail("input", "reading mouse movement", e);
 		}
+	}
+
+	/// <summary>
+	/// Is some other canvas layer, above ours and at or above <see cref="OverlayLayerThreshold"/>, showing something? Looked at about ten times a second:
+	/// listing the layers is not free, and a tool opening is not urgent.
+	/// </summary>
+	private bool ToolIsOpenOnTop()
+	{
+		if (overlayCheckCountdown-- > 0)
+		{
+			return overlayOpen;
+		}
+		overlayCheckCountdown = 6;
+
+		var found = false;
+		var root = tree?.Root;
+		var own = ourLayer;
+		if (root != null && own != null)
+		{
+			foreach (var child in root.GetChildren())
+			{
+				if (child is CanvasLayer other && other.Visible && other.Layer >= OverlayLayerThreshold && other.Layer > own.Layer
+					&& other.GetChildren().Any(c => c is CanvasItem item && item.Visible))
+				{
+					found = true;
+					break;
+				}
+			}
+		}
+		overlayOpen = found;
+		return found;
 	}
 
 	private void CaptureMouse()
