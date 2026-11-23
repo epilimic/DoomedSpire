@@ -8,8 +8,10 @@ dotnet run --project tests/Engine.Tests -c Release        # all tests
 dotnet run --project tests/Engine.Tests -c Release -- Monsters   # only names containing "Monsters"; add --verbose to list passes too
 ```
 
-Needs `freedoom2.wad` (and `freedoom1.wad`) from Freedoom: `sudo apt install freedoom` (files land in `/usr/share/games/doom`), or put them in `tests/Engine.Tests/wads/`
-(git-ignored), or set `FREEDOOM_DIR`. A test whose WAD is missing is reported as SKIP, never as a pass.
+Needs `freedoom2.wad` and `freedoom1.wad` from Freedoom, which are **not in this repo** (about 29 MB each). Get them from the Freedoom release page (https://github.com/freedoom/freedoom/releases, the zip holds both) or your
+distribution's package (Debian/Ubuntu: `freedoom`; on Arch/CachyOS I believe `freedoom1` and `freedoom2`, not checked), then either put the two files in `tests/Engine.Tests/wads/` (git-ignored) or set `FREEDOOM_DIR` to their folder.
+The packages' usual folders (`/usr/share/games/doom`, `/usr/share/doom`) are found without any setting. A test whose WAD is missing is reported as SKIP, never as a pass.
+The project is built for .NET 8 and is set to run on any newer runtime.
 
 **Last result (Freedoom 0.13.0, .NET 8): 97 passed, 0 failed, 0 skipped, 2 seconds.** Checked that it can fail: making the fixed-point multiply off by one makes 40 of the 97 fail.
 

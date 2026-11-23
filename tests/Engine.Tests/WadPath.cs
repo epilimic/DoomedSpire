@@ -8,12 +8,13 @@ namespace ManagedDoomTest
 {
     public static class WadPath
     {
-        // Where to look: the environment variable FREEDOOM_DIR, then tests/Engine.Tests/wads, then the Debian/Ubuntu package folder.
+        // Where to look: the environment variable FREEDOOM_DIR, then tests/Engine.Tests/wads, then the folders the Linux packages use.
         private static readonly string[] Folders =
         {
             Environment.GetEnvironmentVariable("FREEDOOM_DIR") ?? "",
             "wads",
-            "/usr/share/games/doom",
+            "/usr/share/games/doom", // Debian / Ubuntu package "freedoom"
+            "/usr/share/doom",       // Arch-style packages (freedoom1, freedoom2); not checked by me
         };
 
         private static string Find(string fileName)

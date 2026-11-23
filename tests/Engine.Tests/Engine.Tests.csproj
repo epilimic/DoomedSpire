@@ -6,6 +6,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
+    <!-- Built for net8.0 (all the cloud container has) but allowed to run on any newer runtime, such as the owner's net9/net10. -->
+    <RollForward>Major</RollForward>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
