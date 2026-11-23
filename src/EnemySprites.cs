@@ -24,15 +24,15 @@ internal static class EnemySprites
 	/// <summary>
 	/// The enemy that takes the place of each DOOM monster. To try another enemy, change the class here.
 	/// <b>Some of these are swapped for now</b>, so that the enemies the owner wants to look at come up in the first levels instead of the last: the baron has the
-	/// zombieman's enemy (ThievingHopper) and the zombieman has the baron's (SkulkingColony); the cacodemon has the shotgun guy's (Fogmog) and the shotgun guy has the
-	/// cacodemon's (SewerClam). Next the lost soul's and the spider mastermind's enemies (TheLost, Fabricator) take those two places, then the cyberdemon's
-	/// (KnowledgeDemon, with Entomancer as the other candidate); then it all goes back to the lines marked "final".
+	/// zombieman's enemy (ThievingHopper) and the zombieman has the baron's (SkulkingColony); the cacodemon has the shotgun guy's (Fogmog); the imp has the
+	/// cacodemon's (SewerClam) and the shotgun guy has the imp's (Exoskeleton). Next the lost soul's and the spider mastermind's enemies (TheLost, Fabricator)
+	/// take those places, then the cyberdemon's (KnowledgeDemon, with Entomancer as the other candidate); then it all goes back to the lines marked "final".
 	/// </summary>
 	private static readonly (MobjType Monster, Func<MonsterModel> Enemy)[] Replacements =
 	{
 		(MobjType.Possessed, () => ModelDb.Monster<Monsters.SkulkingColony>()), // zombieman (final: ThievingHopper)
-		(MobjType.Shotguy, () => ModelDb.Monster<Monsters.SewerClam>()),        // shotgun guy (final: Fogmog)
-		(MobjType.Troop, () => ModelDb.Monster<Monsters.Exoskeleton>()),        // imp
+		(MobjType.Shotguy, () => ModelDb.Monster<Monsters.Exoskeleton>()),      // shotgun guy (final: Fogmog)
+		(MobjType.Troop, () => ModelDb.Monster<Monsters.SewerClam>()),          // imp (final: Exoskeleton)
 		(MobjType.Sergeant, () => ModelDb.Monster<Monsters.Axebot>()),          // demon (and the spectre)
 		(MobjType.Bruiser, () => ModelDb.Monster<Monsters.ThievingHopper>()),   // baron of hell (final: SkulkingColony)
 		(MobjType.Skull, () => ModelDb.Monster<Monsters.TheLost>()),            // lost soul
