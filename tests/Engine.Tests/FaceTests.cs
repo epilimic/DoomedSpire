@@ -475,6 +475,73 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void TheHealthTextsGiveDoomsOwnHealthRangeOfEachRow()
+        {
+            Assert.AreEqual("100-80%", FaceFactory.HealthLabel(0, 3));
+            Assert.AreEqual("79-60%", FaceFactory.HealthLabel(1, 0));
+            Assert.AreEqual("59-40%", FaceFactory.HealthLabel(2, 7));
+            Assert.AreEqual("39-20%", FaceFactory.HealthLabel(3, 2));
+            Assert.AreEqual("19-1%", FaceFactory.HealthLabel(4, 5));
+            Assert.AreEqual("GOD", FaceFactory.HealthLabel(5, 0));
+            Assert.AreEqual("DEAD 0%", FaceFactory.HealthLabel(5, 1));
+            // every health from 1 to 100 is in exactly one row, the same as the engine's own sum
+            for (var health = 1; health <= 100; health++)
+            {
+                var level = (100 - health) * 5 / 101;
+                var (highest, lowest) = FaceFactory.HealthRange(level);
+                Assert.IsTrue(health <= highest && health >= lowest, $"health {health} is in row {level} ({highest}-{lowest})");
+            }
+        }
+
+        [TestMethod]
+        public void ASheetWithHealthTextsHasThemOnlyUnderTheFacesAndReadsBackTheSame()
+        {
+            var (faces, palette, spec, wad) = Setup(FaceSettings.Default with { Blood = 0f, Neutral = true });
+            using (wad)
+            {
+                foreach (var scale in new[] { 1, 2 })
+                {
+                    var plain = FaceFactory.Sheet(faces, palette, scale, transparentBackground: true);
+                    var labelled = FaceFactory.Sheet(faces, palette, scale, transparentBackground: true, labels: true);
+                    Assert.AreEqual(plain.Width, labelled.Width);
+                    Assert.AreEqual(plain.Height + 6 * FaceFactory.SheetLabelBand * scale, labelled.Height, "every row is taller by the text band");
+
+                    // the faces are where they were, the text is in the band under each one and nothing else is added
+                    var stride = (FaceFactory.SheetCellHeight + FaceFactory.SheetLabelBand) * scale;
+                    for (var row = 0; row < 6; row++)
+                    {
+                        for (var col = 0; col < (row == 5 ? 2 : 8); col++)
+                        {
+                            int blue = 0, inBand = 0;
+                            for (var y = 0; y < stride; y++)
+                            {
+                                for (var x = 0; x < FaceFactory.SheetCellWidth * scale; x++)
+                                {
+                                    var o = 4 * ((FaceFactory.SheetMargin + row * stride + y) * labelled.Width + FaceFactory.SheetMargin + col * FaceFactory.SheetCellWidth * scale + x);
+                                    var isBlue = labelled.Data[o] == 0 && labelled.Data[o + 1] == 190 && labelled.Data[o + 2] == 255 && labelled.Data[o + 3] == 255;
+                                    if (isBlue) { blue++; if (y >= FaceFactory.SheetCellHeight * scale) inBand++; }
+                                    if (y < FaceFactory.SheetCellHeight * scale)
+                                    {
+                                        var p = 4 * ((FaceFactory.SheetMargin + row * FaceFactory.SheetCellHeight * scale + y) * plain.Width + FaceFactory.SheetMargin + col * FaceFactory.SheetCellWidth * scale + x);
+                                        for (var k = 0; k < 4; k++) Assert.AreEqual(plain.Data[p + k], labelled.Data[o + k], $"the face area of row {row} column {col} is as on the plain sheet");
+                                    }
+                                }
+                            }
+                            Assert.IsTrue(blue > 10 * scale * scale && blue == inBand, $"row {row} column {col}: the text is in the band ({blue} blue pixels, {inBand} in the band)");
+                        }
+                    }
+
+                    // read back, the labelled sheet gives the same faces as the plain one
+                    var back = FaceSheetImport.Read(labelled, spec, palette);
+                    foreach (var (name, data) in faces)
+                    {
+                        Assert.IsTrue(Colours(data, palette).SequenceEqual(Colours(back.First(l => l.Name == name).Data, palette)), $"{name} comes back the same from the labelled sheet at scale {scale}");
+                    }
+                }
+            }
+        }
+
+        [TestMethod]
         public void PaintingOnASheetChangesOnlyThatFace()
         {
             var (faces, palette, spec, wad) = Setup(FaceSettings.Default with { Blood = 0f });

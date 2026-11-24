@@ -37,7 +37,11 @@ Every health row has columns 1 to 8, so the same expression exists at all five l
 
 Every playable character has a painted sheet built into the mod: `assets/<character>-faces.png` (`defect`, `fool`, `ironclad`, `necrobinder`, `regent`, `silent`). It holds all 42 faces on a transparent background, one picture pixel per DOOM pixel (280 x 218), laid out as in the tables above: 5 rows of 8, then a row with the two last faces. The mod reads the one for the character you are playing and uses it instead of Doomguy's faces. The faces are drawn one pixel to the right of where the sheet puts them (`PlayerFace.FaceShift`), because they sat a little left of the middle of the face panel; the sheets themselves are not changed. A character with no sheet (a modded one, say) gets faces made from its portrait in the top bar, with paleness, redness and blood marks that grow with each health row.
 
-To change a sheet, edit the file in `assets/` in an editor that can zoom right in (the faces are about 24 pixels wide) and that does not smooth or blur (pencil tools only), keep its size, and build. The mod no longer writes sheets to paint on or a preview of the faces in use.
+To change a sheet, edit the file in `assets/` in an editor that can zoom right in (the faces are about 24 pixels wide) and that does not smooth or blur (pencil tools only), keep its size, and build.
+
+### Sheets to paint on
+
+For a fresh start the mod writes `<character>-faces-to-paint.png` for **every playable character** into its data folder (`~/.local/share/SlayTheSpire2/DoomedSpire/data/`) when a game starts (rewritten only when the game or the mod changes; delete `to-paint.key` to force it). Every face is the same colour with no blood, only the head's position and angle differ. Under every face, in blue, is the DOOM health it stands for (`100-80%`, `79-60%`, `59-40%`, `39-20%`, `19-1%`, and `GOD` and `DEAD 0%` in the last row), so you can judge how much blood each needs. Those texts sit in a 7 pixel band under each row, outside every face's own box, so they are ignored when the sheet is read back: you can leave them in. A sheet with the bands is 280 x 254 (or that times a whole number); one without them (280 x 218, like the built-in sheets) is read just as well. Paint on a copy, then use it as described above (`<character>-faces-painted.png` to try it, `assets/<character>-faces.png` to ship it). The pictures are made from the game's own art on your machine and are not in the repo for that reason: do not commit the to-paint files, only your painted sheets.
 
 Things to know:
 - Any colour works; each pixel is matched to the nearest of DOOM's 256 colours, so very subtle shades may merge.
@@ -46,4 +50,4 @@ Things to know:
 - The glance columns are the whole head moved one pixel to the left and to the right. The eyes do not move on their own, so paint them if you want them to glance. Sliding only what is inside the head instead looked like two faces, one still and one moving.
 - A sheet in the data folder called `<character>-faces-painted.png` (`~/.local/share/SlayTheSpire2/DoomedSpire/data/`) is used instead of the built-in one, for trying a sheet before building it. Remove it to go back.
 - You can save the sheet enlarged by a whole number (for example 6 times, each dot as a 6 x 6 block); the mod reads the middle of every block.
-- A sheet of any other size is refused, and the log says what size it must be; the faces made from the portrait are used then.
+- A sheet of any other size is refused, and the log says what size it must be (with or without the text bands); the faces made from the portrait are used then.

@@ -55,6 +55,10 @@ internal static class PlayerFace
 			Directory.CreateDirectory(folder);
 			var id = character.Id.Entry.ToLowerInvariant();
 
+			// A sheet to paint on for every playable character (so all of them can be painted without playing each). See WriteSheetsToPaint.
+			var toPaint = Path.Combine(folder, id + "-faces-to-paint.png");
+			WriteSheetsToPaint(folder, spec, palette);
+
 			// The faces painted for this character, if there are any, are used instead of the generated ones: first the player's own file in the data folder (to try
 			// out a sheet before it is built in), then the one built into the mod (assets/<character>-faces.png).
 			var painted = Path.Combine(folder, id + "-faces-painted.png");
@@ -93,13 +97,75 @@ internal static class PlayerFace
 			var path = Path.Combine(folder, "face.wad");
 			File.WriteAllBytes(path, PwadWriter.Build(lumps));
 
-			ModLog.Info("face", $"{how ?? "made the faces of"} {character.Id.Entry} ({lumps.Count} faces, from a {picture.Width}x{picture.Height} picture)");
+			ModLog.Info("face", $"{how ?? "made the faces of"} {character.Id.Entry} ({lumps.Count} faces, from a {picture.Width}x{picture.Height} picture); sheets to paint on are in {folder}, for example {toPaint}");
 			return path;
 		}
 		catch (Exception e)
 		{
 			ModLog.Fail("face", "making the character's face", e);
 			return null;
+		}
+	}
+
+	/// <summary>
+	/// Writes <c>&lt;character&gt;-faces-to-paint.png</c> for every playable character, not only the one in this run. A character that cannot be made is skipped (the log says why).
+	/// The sheet is every face on a transparent background, 1:1, the same colour in every one and without blood (<see cref="FaceSettings.Neutral"/>), with the health each
+	/// face stands for written under it in blue (<see cref="FaceFactory.HealthLabel"/>; that band is ignored when the sheet is read back).
+	/// </summary>
+	private static void WriteSheetsToPaint(string folder, Func<string, PatchSpec> spec, DoomPalette palette)
+	{
+		// The sheets only change with the game and this build of the mod, so when neither did and every sheet is there they are left alone.
+		string? gameVersion = null;
+		ModLog.Try("face", "reading the game's version", () => gameVersion = MegaCrit.Sts2.Core.Debug.ReleaseInfoManager.Instance.ReleaseInfo?.Version);
+		var keyPath = Path.Combine(folder, "to-paint.key");
+		var settings = FaceSettings.Default with { Blood = 0f, Neutral = true };
+		var key = string.IsNullOrEmpty(gameVersion) ? null : string.Join("|", gameVersion, typeof(PlayerFace).Assembly.ManifestModule.ModuleVersionId, settings, "labelled");
+		var playable = MegaCrit.Sts2.Core.Models.ModelDb.AllCharacters.Where(c => c.IsPlayable).ToList();
+		string SheetPath(MegaCrit.Sts2.Core.Models.CharacterModel c) => Path.Combine(folder, c.Id.Entry.ToLowerInvariant() + "-faces-to-paint.png");
+		if (key != null && File.Exists(keyPath) && File.ReadAllText(keyPath) == key && playable.All(c => File.Exists(SheetPath(c))))
+		{
+			return;
+		}
+		if (File.Exists(keyPath))
+		{
+			File.Delete(keyPath);
+		}
+		var allWritten = true;
+		foreach (var character in playable)
+		{
+			try
+			{
+				var picture = ReadPicture(character);
+				if (picture == null)
+				{
+					allWritten = false;
+					continue;
+				}
+				var faces = FaceFactory.Build(picture, spec, palette, settings);
+				WriteSheet(FaceFactory.Sheet(faces, palette, 1, transparentBackground: true, labels: true), SheetPath(character));
+			}
+			catch (Exception e)
+			{
+				allWritten = false;
+				ModLog.Fail("face", "writing the sheet to paint for " + character.Id.Entry, e);
+			}
+		}
+		if (allWritten && key != null)
+		{
+			File.WriteAllText(keyPath, key);
+		}
+	}
+
+	/// <summary>Saves a face sheet as a PNG. Failing to write it is not a problem for the game.</summary>
+	private static void WriteSheet(Rgba sheet, string path)
+	{
+		try
+		{
+			Image.CreateFromData(sheet.Width, sheet.Height, false, Image.Format.Rgba8, sheet.Data).SavePng(path);
+		}
+		catch (Exception e)
+		{
+			ModLog.Fail("face", "saving a face sheet", e);
 		}
 	}
 

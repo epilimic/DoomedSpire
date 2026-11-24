@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using ManagedDoom;
 
 namespace DoomedSpire.Host;
@@ -437,6 +438,82 @@ internal static class FaceFactory
 	public const int SheetCellHeight = 35;
 	/// <summary>The empty border around the whole sheet, in pixels (not scaled).</summary>
 	public const int SheetMargin = 4;
+	/// <summary>
+	/// A sheet written to paint on has this many extra pixels under every row, with a small text in it for each face: the health it stands for. The band is below every
+	/// face's own box, so whatever is in it is ignored when the sheet is read back (<see cref="FaceSheetImport"/> reads both sheets with and without it).
+	/// </summary>
+	public const int SheetLabelBand = 7;
+
+	/// <summary>DOOM's health that shows a pain level's faces, from the engine (<c>StatusBar.CalcPainOffset</c>: level = (100 - health) * 5 / 101, health above 100 counting as 100).</summary>
+	public static (int Highest, int Lowest) HealthRange(int level)
+	{
+		int highest = -1, lowest = -1;
+		for (var health = 100; health >= 1; health--)
+		{
+			if ((100 - health) * PainLevels / 101 == level)
+			{
+				highest = highest == -1 ? health : highest;
+				lowest = health;
+			}
+		}
+		return (highest, lowest);
+	}
+
+	/// <summary>The text under a face on a sheet to paint on: the health it is shown at, for example <c>100-80%</c>, or <c>GOD</c> and <c>DEAD 0%</c> for the two last faces.</summary>
+	public static string HealthLabel(int row, int col)
+	{
+		if (row < PainLevels)
+		{
+			var (highest, lowest) = HealthRange(row);
+			return $"{highest}-{lowest}%";
+		}
+		return col == 0 ? "GOD" : "DEAD 0%";
+	}
+
+	// A tiny font for those texts: 3 pixels wide and 5 tall, a row of three bits each.
+	private static readonly Dictionary<char, int[]> LabelFont = new()
+	{
+		['0'] = new[] { 7, 5, 5, 5, 7 }, ['1'] = new[] { 2, 6, 2, 2, 7 }, ['2'] = new[] { 7, 1, 7, 4, 7 }, ['3'] = new[] { 7, 1, 7, 1, 7 }, ['4'] = new[] { 5, 5, 7, 1, 1 },
+		['5'] = new[] { 7, 4, 7, 1, 7 }, ['6'] = new[] { 7, 4, 7, 5, 7 }, ['7'] = new[] { 7, 1, 1, 1, 1 }, ['8'] = new[] { 7, 5, 7, 5, 7 }, ['9'] = new[] { 7, 5, 7, 1, 7 },
+		['-'] = new[] { 0, 0, 7, 0, 0 }, ['%'] = new[] { 5, 1, 2, 4, 5 },
+		['G'] = new[] { 7, 4, 5, 5, 7 }, ['O'] = new[] { 7, 5, 5, 5, 7 }, ['D'] = new[] { 6, 5, 5, 5, 6 }, ['E'] = new[] { 7, 4, 7, 4, 7 }, ['A'] = new[] { 2, 5, 7, 5, 5 },
+		[' '] = new[] { 0, 0, 0, 0, 0 },
+	};
+
+	/// <summary>The colour of the texts: a blue that no face uses, so it is plainly not part of the painting.</summary>
+	private static readonly (byte R, byte G, byte B) LabelColour = (0, 190, 255);
+
+	private static void DrawLabel(byte[] data, int width, int x0, int y0, string text, int scale)
+	{
+		var x = x0;
+		foreach (var ch in text)
+		{
+			var glyph = LabelFont[ch];
+			var advance = ch == ' ' ? 2 : 4;
+			for (var gy = 0; gy < 5; gy++)
+			{
+				for (var gx = 0; gx < 3; gx++)
+				{
+					if (ch == ' ' || (glyph[gy] >> (2 - gx) & 1) == 0)
+					{
+						continue;
+					}
+					for (var sy = 0; sy < scale; sy++)
+					{
+						for (var sx = 0; sx < scale; sx++)
+						{
+							var o = 4 * ((y0 + gy * scale + sy) * width + x + gx * scale + sx);
+							data[o] = LabelColour.R; data[o + 1] = LabelColour.G; data[o + 2] = LabelColour.B; data[o + 3] = 255;
+						}
+					}
+				}
+			}
+			x += advance * scale;
+		}
+	}
+
+	/// <summary>The width of a text in the tiny font, in pixels at scale 1 (a gap of one pixel after every letter but the last).</summary>
+	private static int LabelWidth(string text) => text.Sum(c => c == ' ' ? 2 : 4) - (text.EndsWith(' ') ? 0 : 1);
 
 	private static List<IReadOnlyList<string>> ListSheetRows()
 	{
@@ -451,9 +528,10 @@ internal static class FaceFactory
 
 	/// <summary>
 	/// A sheet of the finished faces, decoded back from their patches the way the engine reads them, laid out as <see cref="SheetRows"/>. For a person to look
-	/// at (<paramref name="scale"/> 6 on a dark background) or to paint on (scale 1 on a transparent background: one picture pixel per DOOM pixel).
+	/// at (<paramref name="scale"/> 6 on a dark background) or to paint on (scale 1 on a transparent background: one picture pixel per DOOM pixel). With
+	/// <paramref name="labels"/> every row is <see cref="SheetLabelBand"/> pixels taller and under every face is the health it stands for (<see cref="HealthLabel"/>).
 	/// </summary>
-	public static Rgba Sheet(IReadOnlyList<(string Name, byte[] Data)> lumps, DoomPalette palette, int scale, bool transparentBackground = false)
+	public static Rgba Sheet(IReadOnlyList<(string Name, byte[] Data)> lumps, DoomPalette palette, int scale, bool transparentBackground = false, bool labels = false)
 	{
 		var byName = new Dictionary<string, byte[]>();
 		foreach (var (name, lumpData) in lumps)
@@ -462,7 +540,7 @@ internal static class FaceFactory
 		}
 
 		var cellW = SheetCellWidth * scale;
-		var cellH = SheetCellHeight * scale;
+		var cellH = (SheetCellHeight + (labels ? SheetLabelBand : 0)) * scale;
 		var width = cellW * SheetColumns + 2 * SheetMargin;
 		var height = cellH * SheetRows.Count + 2 * SheetMargin;
 		var data = new byte[width * height * 4];
@@ -478,6 +556,12 @@ internal static class FaceFactory
 		{
 			for (var col = 0; col < SheetRows[row].Count; col++)
 			{
+				if (labels)
+				{
+					var text = HealthLabel(row, col);
+					var left = SheetMargin + col * cellW + (SheetCellWidth * scale - LabelWidth(text) * scale) / 2;
+					DrawLabel(data, width, left, SheetMargin + row * cellH + (SheetCellHeight + 1) * scale, text, scale);
+				}
 				var patch = Patch.FromData(SheetRows[row][col], byName[SheetRows[row][col]]);
 				for (var x = 0; x < patch.Width; x++)
 				{
@@ -525,13 +609,14 @@ internal static class FaceSheetImport
 		}
 		var scale = innerWidth / gridWidth;
 		var expectedHeight = FaceFactory.SheetCellHeight * scale * rows.Count + 2 * FaceFactory.SheetMargin;
-		if (sheet.Height != expectedHeight)
+		var labelledHeight = (FaceFactory.SheetCellHeight + FaceFactory.SheetLabelBand) * scale * rows.Count + 2 * FaceFactory.SheetMargin;
+		if (sheet.Height != expectedHeight && sheet.Height != labelledHeight)
 		{
-			throw new FormatException($"the sheet is {sheet.Height} pixels tall but at that width it must be {expectedHeight}");
+			throw new FormatException($"the sheet is {sheet.Height} pixels tall but at that width it must be {expectedHeight}, or {labelledHeight} with the health texts under the faces");
 		}
 
 		var cellW = FaceFactory.SheetCellWidth * scale;
-		var cellH = FaceFactory.SheetCellHeight * scale;
+		var cellH = (FaceFactory.SheetCellHeight + (sheet.Height == labelledHeight ? FaceFactory.SheetLabelBand : 0)) * scale;
 		var byName = new Dictionary<string, byte[]>();
 		for (var row = 0; row < rows.Count; row++)
 		{
