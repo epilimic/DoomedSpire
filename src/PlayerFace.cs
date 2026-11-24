@@ -30,7 +30,30 @@ internal static class PlayerFace
 	/// (<see cref="FaceSettings.FitWideHead"/>); every other character is made as before.
 	/// </summary>
 	private static FaceSettings SettingsFor(MegaCrit.Sts2.Core.Models.CharacterModel character, FaceSettings settings) =>
-		string.Equals(character.Id.Entry, "DEFECT", StringComparison.OrdinalIgnoreCase) ? settings with { FitWideHead = true } : settings;
+		IsDefect(character) ? settings with { FitWideHead = true } : settings;
+
+	private static bool IsDefect(MegaCrit.Sts2.Core.Models.CharacterModel character) =>
+		string.Equals(character.Id.Entry, "DEFECT", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>Saves one of the game's pictures of the Defect as <c>defect-source-&lt;name&gt;.png</c> in the data folder (a failure is logged and skipped).</summary>
+	private static void WriteCandidate(string folder, string name, Texture2D? texture)
+	{
+		try
+		{
+			var picture = texture == null ? null : ToPixels(texture.GetImage());
+			if (picture == null)
+			{
+				ModLog.Info("face", $"the Defect's {name} picture is not there");
+				return;
+			}
+			WriteSheet(picture, Path.Combine(folder, $"defect-source-{name}.png"));
+			ModLog.Info("face", $"saved the Defect's {name} picture ({picture.Width}x{picture.Height})");
+		}
+		catch (Exception e)
+		{
+			ModLog.Fail("face", $"saving the Defect's {name} picture", e);
+		}
+	}
 
 	/// <summary>Builds the add-on WAD for the current character into <paramref name="folder"/> and returns its path, or null (log says why) to keep Doomguy.</summary>
 	public static string? TryBuild(string iwadPath, string folder)
@@ -159,9 +182,14 @@ internal static class PlayerFace
 				var characterSettings = SettingsFor(character, settings);
 				var faces = FaceFactory.Build(picture, spec, palette, characterSettings);
 				WriteSheet(FaceFactory.Sheet(faces, palette, 1, transparentBackground: true, labels: true), SheetPath(character));
-				// to find out why a face comes out wrong: the picture it was made from, and how it was cropped
-				WriteSheet(picture, Path.Combine(folder, character.Id.Entry.ToLowerInvariant() + "-portrait.png"));
-				ModLog.Info("face", character.Id.Entry + ": " + FaceFactory.CropReport(picture, spec(FaceFactory.ReferenceFace), characterSettings));
+				if (IsDefect(character))
+				{
+					// the Defect's face is the one that comes out wrong: save the pictures the game has of the character, to pick a better one to make it from
+					WriteCandidate(folder, "icon", character.IconTexture);
+					WriteCandidate(folder, "map-marker", character.MapMarker);
+					WriteCandidate(folder, "character-select", character.CharacterSelectIcon);
+					ModLog.Info("face", character.Id.Entry + ": " + FaceFactory.CropReport(picture, spec(FaceFactory.ReferenceFace), characterSettings));
+				}
 			}
 			catch (Exception e)
 			{
