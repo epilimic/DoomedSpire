@@ -58,6 +58,7 @@ internal sealed class DoomSession : IDisposable
 		try
 		{
 			content = new GameContent(args);
+			KeycardTheme.ApplyTexts(content.Wad); // the melody cards' words, if the game was given the melody cards
 			var video = new EngineVideo(config, content);
 			var input = new PlayerInput(config);
 			var audio = audioOptions == null ? null : new DoomAudio(config, content, audioOptions);

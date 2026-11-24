@@ -227,6 +227,8 @@ internal sealed class DoomView
 			var addOns = new List<string>();
 			if (faces != null) addOns.Add(faces);
 			if (enemies != null) addOns.Add(enemies);
+			var keys = KeyTheme.TryBuild(path, dataFolder); // the keycards as the Fool's melody cards (original DOOM 1 games only)
+			if (keys != null) addOns.Add(keys);
 			var audio = new AudioOptions { OpenSoundFont = SoundFontData.Open, Report = ReportAudioProblem };
 			DoomSession game;
 			try

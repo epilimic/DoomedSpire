@@ -75,6 +75,31 @@ internal sealed class DoomPalette
 /// </summary>
 internal static class DoomPatch
 {
+	/// <summary>A patch read back into its size, its corner and its pixels (palette indices, row after row, -1 where transparent). The reverse of <see cref="Encode"/>.</summary>
+	public static (int Width, int Height, int Left, int Top, int[] Pixels) Decode(byte[] data)
+	{
+		var width = BitConverter.ToInt16(data, 0);
+		var height = BitConverter.ToInt16(data, 2);
+		var left = BitConverter.ToInt16(data, 4);
+		var top = BitConverter.ToInt16(data, 6);
+		var pixels = new int[width * height];
+		Array.Fill(pixels, -1);
+		for (var x = 0; x < width; x++)
+		{
+			var at = BitConverter.ToInt32(data, 8 + 4 * x);
+			while (data[at] != 0xFF)
+			{
+				int start = data[at], length = data[at + 1];
+				for (var k = 0; k < length; k++)
+				{
+					pixels[(start + k) * width + x] = data[at + 3 + k];
+				}
+				at += length + 4;
+			}
+		}
+		return (width, height, left, top, pixels);
+	}
+
 	/// <summary>
 	/// The same picture drawn <paramref name="pixels"/> to the right of where it was drawn (the picture itself is not touched, only the corner it hangs from:
 	/// the picture is drawn at its position minus its left offset). A negative number moves it left.
