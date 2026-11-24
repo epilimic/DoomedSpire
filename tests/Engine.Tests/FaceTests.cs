@@ -383,7 +383,10 @@ namespace ManagedDoomTest
         {
             var wide = new Rgba(40, 10, Enumerable.Range(0, 40 * 10 * 4).Select(i => (byte)(i % 4 == 3 ? 255 : 120)).ToArray());
             var faces = Faces(FaceSettings.Default, wide);
-            Assert.IsTrue(Decode(Lump(faces, "STFST00")).All(i => i >= 0), "an opaque picture fills the whole face");
+            var straight = Patch.FromData("STFST00", faces.First(f => f.Name == "STFST00").Data);
+            var pixels = Decode(Lump(faces, "STFST00"));
+            // the face is 24 wide; the lump has two more columns on the left for a painted head that is wider, which this picture does not use
+            Assert.IsTrue(Enumerable.Range(0, pixels.Length).Where(i => i % straight.Width >= straight.Width - 24).All(i => pixels[i] >= 0), "an opaque picture fills the whole face");
         }
 
         [TestMethod]
@@ -618,6 +621,59 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void AHeadTwoPixelsWiderThanTheGamesIsNotCutOff()
+        {
+            var (faces, palette, spec, wad) = Setup(FaceSettings.Default with { Blood = 0f, Neutral = true });
+            using (wad)
+            {
+                var sheet = FaceFactory.Sheet(faces, palette, 1, transparentBackground: true);
+                var rows = FaceFactory.SheetRows;
+                // the far-left and far-right columns a painted head can use, per face (u is the screen column relative to where faces are drawn)
+                var reach = new Dictionary<string, (int Left, int Right)>();
+                foreach (var row in rows)
+                {
+                    foreach (var name in row)
+                    {
+                        var s = FaceFactory.LumpSpec(name, spec(name));
+                        reach[name] = (-s.Left, s.Width - 1 - s.Left);
+                    }
+                }
+                Assert.IsTrue(reach["STFST00"].Left <= 3 && reach["STFST00"].Right >= 28 && reach["STFST01"].Left <= 2 && reach["STFST02"].Right >= 29, "the straight and glance faces hold a head 26 wide");
+                var painted = (byte[])sheet.Data.Clone();
+                for (var r = 0; r < rows.Count; r++)
+                {
+                    for (var c = 0; c < rows[r].Count; c++)
+                    {
+                        // a blue pixel at each end of row v = 20 of every cell
+                        foreach (var u in new[] { reach[rows[r][c]].Left, reach[rows[r][c]].Right })
+                        {
+                            var o = 4 * ((FaceFactory.SheetMargin + r * FaceFactory.SheetCellHeight + 20) * sheet.Width + FaceFactory.SheetMargin + c * FaceFactory.SheetCellWidth + u);
+                            painted[o] = 0; painted[o + 1] = 0; painted[o + 2] = 255; painted[o + 3] = 255;
+                        }
+                    }
+                }
+                var back = FaceSheetImport.Read(new Rgba(sheet.Width, sheet.Height, painted), spec, palette);
+                foreach (var (name, data) in back)
+                {
+                    var patch = Patch.FromData(name, data);
+                    var blue = 0;
+                    for (var x = 0; x < patch.Width; x++)
+                    {
+                        foreach (var post in patch.Columns[x])
+                        {
+                            for (var k = 0; k < post.Length; k++)
+                            {
+                                var (cr, cg, cb) = palette.Colour(post.Data[post.Offset + k]);
+                                if (cb > 150 && cr < 80 && cg < 80) blue++;
+                            }
+                        }
+                    }
+                    Assert.AreEqual(2, blue, $"{name}: a pixel painted in the first and last column a head can use is kept");
+                }
+            }
+        }
+
+        [TestMethod]
         public void PaintingOnASheetChangesOnlyThatFace()
         {
             var (faces, palette, spec, wad) = Setup(FaceSettings.Default with { Blood = 0f });
@@ -625,7 +681,7 @@ namespace ManagedDoomTest
             {
                 var sheet = FaceFactory.Sheet(faces, palette, 1, transparentBackground: true);
                 // paint one pixel in the middle of the worst-health straight face (row 4, column 0): a bright blue no face has
-                var s = spec("STFST40");
+                var s = FaceFactory.LumpSpec("STFST40", spec("STFST40"));
                 int px = s.Width / 2, py = s.Height / 2;
                 int u = px - s.Left, v = py - s.Top;
                 var o = 4 * ((FaceFactory.SheetMargin + 4 * FaceFactory.SheetCellHeight + v) * sheet.Width + FaceFactory.SheetMargin + 0 * FaceFactory.SheetCellWidth + u);
@@ -680,8 +736,10 @@ namespace ManagedDoomTest
                 foreach (var path in sheets)
                 {
                     var (width, height, data) = Png.Load(path);
-                    Assert.AreEqual((280, 218), (width, height), Path.GetFileName(path) + " is the size of a face sheet");
-                    bool Opaque(int row, int col, int u, int v) => data[4 * ((FaceFactory.SheetMargin + row * FaceFactory.SheetCellHeight + v) * width + FaceFactory.SheetMargin + col * FaceFactory.SheetCellWidth + u) + 3] >= 128;
+                    // 280 x 218 as painted on a plain sheet, or 280 x 260 with the health texts under each row (a sheet written to paint on)
+                    Assert.IsTrue((width, height) == (280, 218) || (width, height) == (280, 260), Path.GetFileName(path) + " is the size of a face sheet: " + width + " x " + height);
+                    var stride = height == 260 ? FaceFactory.SheetCellHeight + FaceFactory.SheetLabelBand : FaceFactory.SheetCellHeight;
+                    bool Opaque(int row, int col, int u, int v) => data[4 * ((FaceFactory.SheetMargin + row * stride + v) * width + FaceFactory.SheetMargin + col * FaceFactory.SheetCellWidth + u) + 3] >= 128;
                     var imported = FaceSheetImport.Read(new Rgba(width, height, data), spec, palette).ToDictionary(l => l.Name, l => l.Data);
                     for (var row = 0; row < 5; row++)
                     {

@@ -53,14 +53,21 @@ internal static class FaceFactory
 	}
 
 	/// <summary>
-	/// The size and corner a face lump is made with. The game's own straight faces are exactly as wide as the head, so a head that looks to one side (moved
-	/// a pixel) would lose a column of itself at the edge it moves toward. So the two glances (STFST<i>n</i>1 and STFST<i>n</i>2) are made one pixel wider on each
-	/// side than the game's; the picture is drawn in the same place on the screen. Used when the faces are made and when a painted sheet is read.
+	/// The size and corner a face lump is made with. The game's own faces are exactly as wide as the head (24), but a painted head can be wider (the Defect's is 26) and a
+	/// head that looks to one side (moved a pixel) would lose a column at the edge it moves toward. So every face but the turning ones is made two columns wider on the
+	/// left, and the two glances (STFST<i>n</i>1 and STFST<i>n</i>2) two more on the right; every pixel the game's faces have is drawn in the same place on the screen.
+	/// Used when the faces are made and when a painted sheet is read.
 	/// </summary>
 	public static PatchSpec LumpSpec(string name, PatchSpec original)
 	{
+		if (name.StartsWith("STFTR", StringComparison.Ordinal) || name.StartsWith("STFTL", StringComparison.Ordinal))
+		{
+			return original; // the turning faces are already wider than the straight ones: 26 wide, which holds the widest painted head
+		}
+		// A painted head can be 26 wide (the Defect's crown), two wider than the game's 24, so the other faces get two columns more on the left (the same place on screen for
+		// every pixel the game's faces have); the glances, whose head moves a pixel, two more again on the right so that a head moved either way is not cut off.
 		var glance = name.Length == 7 && name.StartsWith("STFST", StringComparison.Ordinal) && (name[6] == '1' || name[6] == '2');
-		return glance ? new PatchSpec(original.Width + 2, original.Height, original.Left + 1, original.Top) : original;
+		return glance ? new PatchSpec(original.Width + 4, original.Height, original.Left + 3, original.Top) : new PatchSpec(original.Width + 2, original.Height, original.Left + 2, original.Top);
 	}
 
 	/// <summary>The lump whose size and corner define the "canonical" face: the normal straight-ahead look at full health.</summary>
