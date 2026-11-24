@@ -79,15 +79,38 @@ namespace ManagedDoomTest
                 var data = new byte[7 * 5 * 4];
                 for (var i = 0; i < 35; i++) { data[4 * i] = 255; data[4 * i + 1] = 0; data[4 * i + 2] = 255; data[4 * i + 3] = i % 2 == 0 ? (byte)255 : (byte)0; }
                 var warnings = new List<string>();
-                var art = new Dictionary<string, Rgba> { ["keys/hud-cho.png"] = new Rgba(7, 5, data), ["keys/hud-ki.png"] = new Rgba(8, 5, new byte[8 * 5 * 4]) };
+                var art = new Dictionary<string, Rgba> { ["small_cho.png"] = new Rgba(7, 5, data), ["small_ki.png"] = new Rgba(8, 5, new byte[8 * 5 * 4]) };
                 var lumps = KeycardTheme.Build(wad, art, warnings.Add).ToDictionary(l => l.Name, l => l.Data);
                 var cho = DoomPatch.Decode(lumps["STKEYS0"]);
                 Assert.IsTrue(cho.Pixels.Where((p, i) => i % 2 == 1).All(p => p == -1), "the owner's transparent pixels are transparent");
                 Assert.IsTrue(cho.Pixels.Where((p, i) => i % 2 == 0).All(p => p >= 0 && palette.Colour(p).R > 150 && palette.Colour(p).B > 100), "and its pixels are the owner's");
                 Assert.AreEqual((0, -1), (cho.Left, cho.Top), "in the place of the game's own icon");
-                Assert.IsTrue(warnings.Any(w => w.Contains("hud-ki.png") && w.Contains("7 x 5")), "a picture of the wrong size is reported");
+                Assert.IsTrue(warnings.Any(w => w.Contains("small_ki.png") && w.Contains("7 x 5")), "a picture of the wrong size is reported");
                 Assert.IsFalse(lumps.ContainsKey("STKEYS1"), "and left out, so the game's own icon stays");
                 Assert.IsFalse(lumps.ContainsKey("STKEYS2"), "as is the one with no picture at all");
+            }
+        }
+
+        [TestMethod]
+        public void ACyanStatusBarIconIsShownAsLightBlueNotGreen()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
+                var data = new byte[7 * 5 * 4];
+                var shades = new[] { (0, 240, 247), (0, 180, 185), (0, 120, 124), (0, 60, 62) };
+                for (var i = 0; i < 35; i++) { var s = shades[i % shades.Length]; data[4 * i] = (byte)s.Item1; data[4 * i + 1] = (byte)s.Item2; data[4 * i + 2] = (byte)s.Item3; data[4 * i + 3] = 255; }
+                var lumps = KeycardTheme.Build(wad, new Dictionary<string, Rgba> { ["small_cho.png"] = new Rgba(7, 5, data) }).ToDictionary(l => l.Name, l => l.Data);
+                foreach (var p in DoomPatch.Decode(lumps["STKEYS0"]).Pixels)
+                {
+                    var c = palette.Colour(p);
+                    Assert.IsTrue(c.B > c.G + 20 && c.B > c.R + 20, $"a cyan pixel is a blue ({c.R},{c.G},{c.B}), not a green or a grey");
+                }
+                // pink and yellow are simply the nearest the palette has
+                var yellow = new byte[7 * 5 * 4];
+                for (var i = 0; i < 35; i++) { yellow[4 * i] = 255; yellow[4 * i + 1] = 255; yellow[4 * i + 2] = 0; yellow[4 * i + 3] = 255; }
+                var ki = DoomPatch.Decode(KeycardTheme.Build(wad, new Dictionary<string, Rgba> { ["small_ki.png"] = new Rgba(7, 5, yellow) }).ToDictionary(l => l.Name, l => l.Data)["STKEYS1"]);
+                Assert.IsTrue(ki.Pixels.All(p => palette.Colour(p) == (255, 255, 0)));
             }
         }
 

@@ -10,7 +10,7 @@ namespace DoomedSpire;
 /// <summary>
 /// Gives the original DOOM 1 games the Fool's melodies for their keycards (see KeycardTheme): builds the small add-on WAD with the recoloured cards, the status bar
 /// icons, the door strips and the marker that changes the pickup messages. The only art that comes from the mod is the three 7 x 5 status bar icons the owner
-/// paints (assets/keys/hud-cho.png, hud-ki.png and hud-wah.png); until they exist the game's own icons are recoloured. No game picture is stored: the rest is made
+/// paints (assets/small_cho.png, small_ki.png and small_wah.png); until they exist the game's own icons stay. No game picture is stored: the rest is made
 /// from the loaded game. Quick (a few small pictures), so it is made at every start. If anything goes wrong the game starts with its own keycards.
 /// </summary>
 internal static class KeyTheme

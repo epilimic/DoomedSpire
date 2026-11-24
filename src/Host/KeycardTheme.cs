@@ -10,7 +10,7 @@ namespace DoomedSpire.Host;
 /// DOOM's three keycards become the Fool's three melodies: the blue card is the blue Cho Melody Card, the yellow one the yellow Ki Melody Card and the red one
 /// the red Wah Melody Card (the skull keys stay as they are). What changes: the card lying in the level gets the melody's symbol on its face (the game's own picture
 /// with the symbol drawn over it: DOOM's palette has no cyan or pink, so the cards keep the game's blue, yellow and red), the card's small icon on the status bar
-/// (a picture the owner paints, <c>keys/hud-*.png</c>; until there is one the game's own icon stays) and the words in the pickup and "you need" messages. Nothing
+/// (a picture the owner paints, <c>small_cho.png</c>, <c>small_ki.png</c> and <c>small_wah.png</c>; until there is one the game's own icon stays) and the words in the pickup and "you need" messages. Nothing
 /// of the game's art is stored in the mod: the card is the loaded game's, and only the symbols (a few pixels each) are drawn here. Godot-free (the tests use it).
 /// </summary>
 internal static class KeycardTheme
@@ -54,9 +54,9 @@ internal static class KeycardTheme
 	// the melody's own light colour (Cho's cyan has no match, so it is a light blue; Ki is yellow; Wah's pink comes out a light pink-red).
 	private static readonly Key[] Keys =
 	{
-		new("Blue", "Cho", 'B', "STKEYS0", (150, 200, 255), Rings, "GOTBLUECARD", "PD_BLUEK", "PD_BLUEO", "keys/hud-cho.png"),
-		new("Yellow", "Ki", 'Y', "STKEYS1", (255, 255, 90), Plus, "GOTYELWCARD", "PD_YELLOWK", "PD_YELLOWO", "keys/hud-ki.png"),
-		new("Red", "Wah", 'R', "STKEYS2", (255, 150, 190), Zigzag, "GOTREDCARD", "PD_REDK", "PD_REDO", "keys/hud-wah.png"),
+		new("Blue", "Cho", 'B', "STKEYS0", (150, 200, 255), Rings, "GOTBLUECARD", "PD_BLUEK", "PD_BLUEO", "small_cho.png"),
+		new("Yellow", "Ki", 'Y', "STKEYS1", (255, 255, 90), Plus, "GOTYELWCARD", "PD_YELLOWK", "PD_YELLOWO", "small_ki.png"),
+		new("Red", "Wah", 'R', "STKEYS2", (255, 150, 190), Zigzag, "GOTREDCARD", "PD_REDK", "PD_REDO", "small_wah.png"),
 	};
 
 	/// <summary>The names of the status-bar pictures the owner paints (7 x 5 pixels, a transparent background), by the resource name inside the mod.</summary>
@@ -97,7 +97,7 @@ internal static class KeycardTheme
 				if (art.Width == hud.Width && art.Height == hud.Height)
 				{
 					var pixels = Enumerable.Range(0, art.Width * art.Height)
-						.Select(i => art.Data[4 * i + 3] < 128 ? -1 : palette.Nearest(art.Data[4 * i], art.Data[4 * i + 1], art.Data[4 * i + 2])).ToArray();
+						.Select(i => art.Data[4 * i + 3] < 128 ? -1 : ToPalette(palette, art.Data[4 * i], art.Data[4 * i + 1], art.Data[4 * i + 2])).ToArray();
 					icons.Add((key.Hud, DoomPatch.Encode(hud.Width, hud.Height, hud.Left, hud.Top, pixels)));
 				}
 				else
@@ -132,6 +132,26 @@ internal static class KeycardTheme
 			DoomString.ReplaceByName(key.NeedDoor, $"You need a {card} to open this door");
 			DoomString.ReplaceByName(key.NeedObject, $"You need a {card} to activate this object");
 		}
+	}
+
+	/// <summary>
+	/// The palette index for a colour of the owner's status-bar icon. DOOM's palette has no cyan (the nearest colour to Cho's cyan is a light green), so a cyan is
+	/// shown as the light blue it is closest to, keeping its brightness; every other colour is simply the nearest the palette has.
+	/// </summary>
+	private static readonly (int R, int G, int B)[] BlueRamp =
+	{
+		(171, 171, 255), (143, 143, 255), (115, 115, 255), (83, 83, 255), (55, 55, 255), (27, 27, 255), (0, 0, 255), (0, 0, 203), (0, 0, 155), (0, 0, 107),
+	};
+
+	private static int ToPalette(DoomPalette palette, int r, int g, int b)
+	{
+		if (g >= r + 60 && b >= r + 60 && Math.Abs(g - b) <= 60)
+		{
+			var v = Math.Max(g, b) / 255.0; // how bright the cyan is: 1 is the lightest blue of the ramp, 0 the darkest
+			var step = Math.Clamp((int)Math.Round((1 - v) * (BlueRamp.Length - 1)), 0, BlueRamp.Length - 1);
+			return palette.Nearest(BlueRamp[step].R, BlueRamp[step].G, BlueRamp[step].B);
+		}
+		return palette.Nearest(r, g, b);
 	}
 
 	/// <summary>The melody's symbol on the card's face, in the melody's light colour with a dark edge, over the body only (the card's outline and its lights are left alone).</summary>
