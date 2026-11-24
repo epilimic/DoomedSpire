@@ -7,8 +7,8 @@ using ManagedDoom;
 namespace DoomedSpire.Host;
 
 /// <summary>
-/// DOOM's three keycards become the Fool's three melodies: the blue card is the blue Cho Melody Card, the yellow one the yellow Ki Melody Card and the red one
-/// the red Wah Melody Card (the skull keys stay as they are). What changes: the card lying in the level is replaced by the melody's own symbol, the game's picture
+/// DOOM's three keycards become the Fool's three melodies: the blue card is the blue Cho Melody, the yellow one the yellow Ki Melody and the red one
+/// the red Wah Melody (the skull keys stay as they are). What changes: the card lying in the level is replaced by the melody's own symbol, the game's picture
 /// of it (<c>images/packed/fool/symbol_cho.png</c>, <c>symbol_ki.png</c> and <c>symbol_wah.png</c>), made small and put in DOOM's colours at run time (nothing of
 /// it is stored; nothing is drawn by the mod); the card's small icon on the status bar (a picture the owner paints, <c>small_cho.png</c>, <c>small_ki.png</c> and
 /// <c>small_wah.png</c>; until there is one the game's own icon stays) and the words in the pickup and "you need" messages. A card whose symbol picture is not
@@ -113,10 +113,10 @@ internal static class KeycardTheme
 		}
 		foreach (var key in Keys)
 		{
-			var card = $"{key.Colour} {key.Melody} Melody Card";
-			DoomString.ReplaceByName(key.Pickup, $"Picked up a {card}.");
-			DoomString.ReplaceByName(key.NeedDoor, $"You need a {card} to open this");
-			DoomString.ReplaceByName(key.NeedObject, $"You need a {card} to use this");
+			var name = $"{key.Colour} {key.Melody} Melody";
+			DoomString.ReplaceByName(key.Pickup, $"Picked up a {name}.");
+			DoomString.ReplaceByName(key.NeedDoor, $"You need a {name} to open this");
+			DoomString.ReplaceByName(key.NeedObject, $"You need a {name} to activate this");
 		}
 	}
 
