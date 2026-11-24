@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using DoomedSpire.Host;
 using Godot;
 using ManagedDoom;
@@ -15,6 +16,9 @@ namespace DoomedSpire;
 /// </summary>
 internal static class PlayerFace
 {
+	/// <summary>How many pixels to the right of where the sheets put them the faces are drawn (the faces looked slightly left of centre in the face panel).</summary>
+	private const int FaceShift = 1;
+
 	/// <summary>Builds the add-on WAD for the current character into <paramref name="folder"/> and returns its path, or null (log says why) to keep Doomguy.</summary>
 	public static string? TryBuild(string iwadPath, string folder)
 	{
@@ -84,6 +88,8 @@ internal static class PlayerFace
 				}
 			}
 
+			// Every face is drawn a pixel to the right of where the sheets put it: the faces sat a little left of the middle of the status bar's face panel.
+			lumps = lumps.Select(l => (l.Name, DoomPatch.ShiftRight(l.Data, FaceShift))).ToList();
 			var path = Path.Combine(folder, "face.wad");
 			File.WriteAllBytes(path, PwadWriter.Build(lumps));
 

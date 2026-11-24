@@ -96,6 +96,21 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void ShiftingAPatchRightMovesWhereItIsDrawnAndNothingElse()
+        {
+            var pixels = new[] { 1, 2, -1, 3, 4, 5 };
+            var data = DoomPatch.Encode(3, 2, -5, -2, pixels);
+            var moved = DoomPatch.ShiftRight(data, 1);
+            var before = Patch.FromData("t", data);
+            var after = Patch.FromData("t", moved);
+            Assert.AreEqual(before.LeftOffset - 1, after.LeftOffset, "drawn one pixel further right");
+            Assert.AreEqual((before.Width, before.Height, before.TopOffset), (after.Width, after.Height, after.TopOffset));
+            Assert.IsTrue(Decode(moved).SequenceEqual(Decode(data)), "the picture is the same, pixel for pixel");
+            Assert.AreEqual(before.LeftOffset + 2, Patch.FromData("t", DoomPatch.ShiftRight(data, -2)).LeftOffset, "a negative number moves it left");
+            Assert.AreEqual(-5, Patch.FromData("t", data).LeftOffset, "the original is not changed");
+        }
+
+        [TestMethod]
         public void ThePaletteMatchFindsTheColourItself()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))

@@ -75,6 +75,20 @@ internal sealed class DoomPalette
 /// </summary>
 internal static class DoomPatch
 {
+	/// <summary>
+	/// The same picture drawn <paramref name="pixels"/> to the right of where it was drawn (the picture itself is not touched, only the corner it hangs from:
+	/// the picture is drawn at its position minus its left offset). A negative number moves it left.
+	/// </summary>
+	public static byte[] ShiftRight(byte[] patch, int pixels)
+	{
+		var shifted = (byte[])patch.Clone();
+		var leftOffset = (short)(patch[4] | (patch[5] << 8));
+		var moved = (short)(leftOffset - pixels);
+		shifted[4] = (byte)(moved & 0xFF);
+		shifted[5] = (byte)((moved >> 8) & 0xFF);
+		return shifted;
+	}
+
 	/// <param name="pixels">Width * height palette indices, row after row; a negative number is transparent.</param>
 	public static byte[] Encode(int width, int height, int leftOffset, int topOffset, int[] pixels)
 	{
