@@ -10,9 +10,8 @@ namespace DoomedSpire;
 /// <summary>
 /// Gives the original DOOM 1 games the Fool's melodies for their keycards (see KeycardTheme): builds the small add-on WAD with the melody symbols that replace the cards, the status bar
 /// icons and the marker that changes the pickup messages. The symbols are the game's own pictures of them (res://images/packed/fool/symbol_*.png), read when the
-/// game starts and never stored; the only art that comes from the mod is the three 7 x 5 status bar icons the owner paints (assets/small_cho.png, small_ki.png
-/// and small_wah.png); until they exist the game's own icons stay. Quick (a few small pictures), so it is made at every start. If anything goes wrong the game
-/// starts with its own keycards.
+/// game starts and never stored; both the card in the level and its status bar icon are made from them. Quick (a few small pictures), so it is made at every
+/// start. If anything goes wrong the game starts with its own keycards.
 /// </summary>
 internal static class KeyTheme
 {
@@ -27,16 +26,6 @@ internal static class KeyTheme
 				return null; // the same games as the enemies: the original DOOM 1 (Freedoom and DOOM II keep their keycards)
 			}
 
-			var art = new Dictionary<string, Rgba>();
-			foreach (var file in KeycardTheme.HudFiles)
-			{
-				var picture = ReadEmbedded(file);
-				if (picture != null)
-				{
-					art[file] = picture;
-				}
-			}
-
 			var symbols = new Dictionary<string, Rgba>();
 			foreach (var symbolPath in KeycardTheme.SymbolPaths)
 			{
@@ -47,7 +36,7 @@ internal static class KeyTheme
 				}
 			}
 
-			var lumps = KeycardTheme.Build(wad, art, text => ModLog.OnceInfo("keys", text, text), symbols);
+			var lumps = KeycardTheme.Build(wad, symbols, text => ModLog.OnceInfo("keys", text, text));
 			if (lumps == null)
 			{
 				ModLog.OnceInfo("keys", "no-keys", "this game does not have the keycard pictures, so it keeps its own keycards");
@@ -56,7 +45,7 @@ internal static class KeyTheme
 			Directory.CreateDirectory(folder);
 			var path = Path.Combine(folder, "keys.wad");
 			File.WriteAllBytes(path, PwadWriter.Build(lumps));
-			ModLog.OnceInfo("keys", "built", $"the keycards are the melody cards (symbols from the game: {symbols.Count} of {KeycardTheme.SymbolPaths.Count}; status bar icons: {art.Count} of {KeycardTheme.HudFiles.Count} painted, the rest the game's own)");
+			ModLog.OnceInfo("keys", "built", $"the keycards are the melody cards (symbols from the game: {symbols.Count} of {KeycardTheme.SymbolPaths.Count})");
 			return path;
 		}
 		catch (Exception e)
@@ -81,28 +70,6 @@ internal static class KeyTheme
 		catch (Exception e)
 		{
 			ModLog.Fail("keys", $"reading the game's {path}", e);
-			return null;
-		}
-	}
-
-	/// <summary>A picture built into the dll, or null if there is none or it cannot be read.</summary>
-	private static Rgba? ReadEmbedded(string name)
-	{
-		try
-		{
-			using var stream = typeof(KeyTheme).Assembly.GetManifestResourceStream(name);
-			if (stream == null)
-			{
-				return null;
-			}
-			using var buffer = new MemoryStream();
-			stream.CopyTo(buffer);
-			var image = new Image();
-			return image.LoadPngFromBuffer(buffer.ToArray()) == Godot.Error.Ok ? PlayerFace.ToPixels(image) : null;
-		}
-		catch (Exception e)
-		{
-			ModLog.Fail("keys", $"reading {name}", e);
 			return null;
 		}
 	}

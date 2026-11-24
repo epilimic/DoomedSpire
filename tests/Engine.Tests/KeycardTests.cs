@@ -12,7 +12,7 @@ namespace ManagedDoomTest
     [TestClass]
     public class KeycardTests
     {
-        private static IReadOnlyList<(string Name, byte[] Data)> Theme(Wad wad, IReadOnlyDictionary<string, Rgba> art = null) => KeycardTheme.Build(wad, art, null, Symbols());
+        private static IReadOnlyList<(string Name, byte[] Data)> Theme(Wad wad) => KeycardTheme.Build(wad, Symbols());
 
         /// <summary>Stand-ins for the game's three symbol pictures: 64 x 48 with a transparent margin, a plus sign (white, so it is tinted) in the first, the same in the melody's own colour in the others.</summary>
         private static Dictionary<string, Rgba> Symbols((byte R, byte G, byte B)? colour = null)
@@ -90,8 +90,6 @@ namespace ManagedDoomTest
                 Assert.IsTrue(cho.All(c => c.B > c.G + 20 && c.B > c.R + 20), "Cho's symbol is blue");
                 Assert.IsTrue(DoomPatch.Decode(lumps["YKEYA0"]).Pixels.Where(p => p >= 0).Select(p => palette.Colour(p)).All(c => c.R > 150 && c.G < 120), "a red picture stays red");
                 Assert.IsFalse(lumps["BKEYA0"].SequenceEqual(lumps["RKEYA0"]) || lumps["BKEYA0"].SequenceEqual(lumps["YKEYA0"]), "the three symbols are different");
-                // the status bar keeps the game's own icons until the owner paints them
-                Assert.IsFalse(lumps.ContainsKey("STKEYS0") || lumps.ContainsKey("STKEYS1") || lumps.ContainsKey("STKEYS2"));
                 Assert.IsTrue(lumps.ContainsKey(KeycardTheme.Marker));
             }
         }
@@ -105,7 +103,7 @@ namespace ManagedDoomTest
                 symbols.Remove(KeycardTheme.SymbolPaths[1]);
                 symbols[KeycardTheme.SymbolPaths[2]] = new Rgba(8, 8, new byte[8 * 8 * 4]);
                 var warnings = new List<string>();
-                var lumps = KeycardTheme.Build(wad, null, warnings.Add, symbols).ToDictionary(l => l.Name, l => l.Data);
+                var lumps = KeycardTheme.Build(wad, symbols, warnings.Add).ToDictionary(l => l.Name, l => l.Data);
                 Assert.IsTrue(lumps.ContainsKey("BKEYA0") && lumps.ContainsKey("BKEYB0"));
                 Assert.IsFalse(lumps.ContainsKey("YKEYA0") || lumps.ContainsKey("YKEYB0"), "no picture: the game's card stays");
                 Assert.IsFalse(lumps.ContainsKey("RKEYA0") || lumps.ContainsKey("RKEYB0"), "an empty picture: the game's card stays");
@@ -115,46 +113,31 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
-        public void TheOwnersStatusBarIconsAreUsedWhenTheyAreTheRightSizeAndReportedAndLeftOutIfNot()
+        public void TheStatusBarIconsAreTheSymbolsMadeSevenBySevenLikeTheSkullKeys()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))
             {
                 var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
-                var data = new byte[7 * 5 * 4];
-                for (var i = 0; i < 35; i++) { data[4 * i] = 255; data[4 * i + 1] = 0; data[4 * i + 2] = 255; data[4 * i + 3] = i % 2 == 0 ? (byte)255 : (byte)0; }
-                var warnings = new List<string>();
-                var art = new Dictionary<string, Rgba> { ["small_cho.png"] = new Rgba(7, 5, data), ["small_ki.png"] = new Rgba(8, 5, new byte[8 * 5 * 4]) };
-                var lumps = KeycardTheme.Build(wad, art, warnings.Add).ToDictionary(l => l.Name, l => l.Data);
-                var cho = DoomPatch.Decode(lumps["STKEYS0"]);
-                Assert.IsTrue(cho.Pixels.Where((p, i) => i % 2 == 1).All(p => p == -1), "the owner's transparent pixels are transparent");
-                Assert.IsTrue(cho.Pixels.Where((p, i) => i % 2 == 0).All(p => p >= 0 && palette.Colour(p).R > 150 && palette.Colour(p).B > 100), "and its pixels are the owner's");
-                Assert.AreEqual((0, -1), (cho.Left, cho.Top), "in the place of the game's own icon");
-                Assert.IsTrue(warnings.Any(w => w.Contains("small_ki.png") && w.Contains("7 x 5")), "a picture of the wrong size is reported");
-                Assert.IsFalse(lumps.ContainsKey("STKEYS1"), "and left out, so the game's own icon stays");
-                Assert.IsFalse(lumps.ContainsKey("STKEYS2"), "as is the one with no picture at all");
-            }
-        }
-
-        [TestMethod]
-        public void ACyanStatusBarIconIsShownAsLightBlueNotGreen()
-        {
-            using (var wad = new Wad(WadPath.Doom1Shareware))
-            {
-                var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
-                var data = new byte[7 * 5 * 4];
-                var shades = new[] { (0, 240, 247), (0, 180, 185), (0, 120, 124), (0, 60, 62) };
-                for (var i = 0; i < 35; i++) { var s = shades[i % shades.Length]; data[4 * i] = (byte)s.Item1; data[4 * i + 1] = (byte)s.Item2; data[4 * i + 2] = (byte)s.Item3; data[4 * i + 3] = 255; }
-                var lumps = KeycardTheme.Build(wad, new Dictionary<string, Rgba> { ["small_cho.png"] = new Rgba(7, 5, data) }).ToDictionary(l => l.Name, l => l.Data);
-                foreach (var p in DoomPatch.Decode(lumps["STKEYS0"]).Pixels)
+                var lumps = Theme(wad).ToDictionary(l => l.Name, l => l.Data);
+                var skull = DoomPatch.Decode(wad.ReadLump("STKEYS3"));
+                for (var i = 0; i < 3; i++)
                 {
-                    var c = palette.Colour(p);
-                    Assert.IsTrue(c.B > c.G + 20 && c.B > c.R + 20, $"a cyan pixel is a blue ({c.R},{c.G},{c.B}), not a green or a grey");
+                    var icon = DoomPatch.Decode(lumps["STKEYS" + i]);
+                    Assert.AreEqual((skull.Width, skull.Height, skull.Left, skull.Top), (icon.Width, icon.Height, icon.Left, icon.Top), $"STKEYS{i} is the size and place of a skull key's icon (7 x 7)");
+                    Assert.IsTrue(icon.Pixels.Count(p => p >= 0) >= 8, $"STKEYS{i} shows the symbol");
+                    Assert.IsTrue(icon.Pixels.Any(p => p < 0), $"STKEYS{i} is not a filled square");
                 }
-                // pink and yellow are simply the nearest the palette has
-                var yellow = new byte[7 * 5 * 4];
-                for (var i = 0; i < 35; i++) { yellow[4 * i] = 255; yellow[4 * i + 1] = 255; yellow[4 * i + 2] = 0; yellow[4 * i + 3] = 255; }
-                var ki = DoomPatch.Decode(KeycardTheme.Build(wad, new Dictionary<string, Rgba> { ["small_ki.png"] = new Rgba(7, 5, yellow) }).ToDictionary(l => l.Name, l => l.Data)["STKEYS1"]);
-                Assert.IsTrue(ki.Pixels.All(p => palette.Colour(p) == (255, 255, 0)));
+                // Cho's is a blue (the palette has no cyan, and its nearest colour is a green), Ki's is yellow
+                Assert.IsTrue(DoomPatch.Decode(lumps["STKEYS0"]).Pixels.Where(p => p >= 0).Select(p => palette.Colour(p)).All(c => c.B > c.G + 20 && c.B > c.R + 20), "Cho's icon is blue");
+                Assert.IsTrue(DoomPatch.Decode(lumps["STKEYS1"]).Pixels.Where(p => p >= 0).Select(p => palette.Colour(p)).All(c => c.R > 150 && c.G < 120), "a red picture stays red");
+                Assert.IsFalse(lumps["STKEYS0"].SequenceEqual(lumps["STKEYS2"]), "the icons differ");
+                // the skull keys' icons are not touched, and a card with no symbol picture keeps the game's icon
+                Assert.IsFalse(lumps.ContainsKey("STKEYS3") || lumps.ContainsKey("STKEYS4") || lumps.ContainsKey("STKEYS5"));
+                var symbols = Symbols();
+                symbols.Remove(KeycardTheme.SymbolPaths[1]);
+                var some = KeycardTheme.Build(wad, symbols).ToDictionary(l => l.Name, l => l.Data);
+                Assert.IsTrue(some.ContainsKey("STKEYS0") && !some.ContainsKey("STKEYS1") && some.ContainsKey("STKEYS2"));
+                Assert.IsFalse(KeycardTheme.Build(wad).Any(l => l.Name.StartsWith("STKEYS")), "with no pictures at all no icon is changed");
             }
         }
 

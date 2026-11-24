@@ -10,9 +10,8 @@ namespace DoomedSpire.Host;
 /// DOOM's three keycards become the Fool's three melodies: the blue card is the blue Cho Melody, the yellow one the yellow Ki Melody and the red one
 /// the red Wah Melody (the skull keys stay as they are). What changes: the card lying in the level is replaced by the melody's own symbol, the game's picture
 /// of it (<c>images/packed/fool/symbol_cho.png</c>, <c>symbol_ki.png</c> and <c>symbol_wah.png</c>), made small and put in DOOM's colours at run time (nothing of
-/// it is stored; nothing is drawn by the mod); the card's small icon on the status bar (a picture the owner paints, <c>small_cho.png</c>, <c>small_ki.png</c> and
-/// <c>small_wah.png</c>; until there is one the game's own icon stays) and the words in the pickup and "you need" messages. A card whose symbol picture is not
-/// there keeps the game's own card. DOOM's palette has no cyan or pink, so Cho comes out light blue and Wah coral pink.
+/// it is stored; nothing is drawn by the mod); the card's small icon on the status bar (the same picture made 7 x 7 pixels, the size of the skull keys' icons) and the
+/// words in the pickup and "you need" messages. A card whose symbol picture is not there keeps the game's own card and icon. DOOM's palette has no cyan or pink, so Cho comes out light blue and Wah coral pink.
 /// Godot-free (the tests use it).
 /// </summary>
 internal static class KeycardTheme
@@ -20,15 +19,15 @@ internal static class KeycardTheme
 	/// <summary>The lump that says a game has been given the melody cards, so that <see cref="ApplyTexts"/> changes the words only then.</summary>
 	public const string Marker = "DSKEYS";
 
-	private sealed record Key(string Colour, string Melody, char Letter, string Hud, (int R, int G, int B) Ink, string SymbolPath, string Pickup, string NeedDoor, string NeedObject, string HudFile);
+	private sealed record Key(string Colour, string Melody, char Letter, string Hud, (int R, int G, int B) Ink, string SymbolPath, string Pickup, string NeedDoor, string NeedObject);
 
 	// The status bar's own order of the three cards: 0 blue, 1 yellow, 2 red (STKEYS0 to STKEYS2). The ink is the melody's colour: it is used when the game's symbol
 	// picture is white or grey (a picture meant to be tinted), so the symbol takes the melody's colour.
 	private static readonly Key[] Keys =
 	{
-		new("Blue", "Cho", 'B', "STKEYS0", (0, 244, 248), "res://images/packed/fool/symbol_cho.png", "GOTBLUECARD", "PD_BLUEK", "PD_BLUEO", "small_cho.png"),
-		new("Yellow", "Ki", 'Y', "STKEYS1", (248, 248, 0), "res://images/packed/fool/symbol_ki.png", "GOTYELWCARD", "PD_YELLOWK", "PD_YELLOWO", "small_ki.png"),
-		new("Red", "Wah", 'R', "STKEYS2", (248, 80, 148), "res://images/packed/fool/symbol_wah.png", "GOTREDCARD", "PD_REDK", "PD_REDO", "small_wah.png"),
+		new("Blue", "Cho", 'B', "STKEYS0", (0, 244, 248), "res://images/packed/fool/symbol_cho.png", "GOTBLUECARD", "PD_BLUEK", "PD_BLUEO"),
+		new("Yellow", "Ki", 'Y', "STKEYS1", (248, 248, 0), "res://images/packed/fool/symbol_ki.png", "GOTYELWCARD", "PD_YELLOWK", "PD_YELLOWO"),
+		new("Red", "Wah", 'R', "STKEYS2", (248, 80, 148), "res://images/packed/fool/symbol_wah.png", "GOTREDCARD", "PD_REDK", "PD_REDO"),
 	};
 
 	/// <summary>The game's pictures of the three symbols (resource paths in the game), which <see cref="Build"/> takes in <c>symbolArt</c>.</summary>
@@ -37,15 +36,15 @@ internal static class KeycardTheme
 	/// <summary>The largest side of a symbol in the level, in DOOM pixels (the card was 14 x 16).</summary>
 	public const int SymbolSize = 20;
 
-	/// <summary>The names of the status-bar pictures the owner paints (7 x 5 pixels, a transparent background), by the resource name inside the mod.</summary>
-	public static IReadOnlyList<string> HudFiles => Keys.Select(k => k.HudFile).ToList();
+	/// <summary>The side of a status-bar icon, in DOOM pixels: the size of the skull keys' icons, which fill the slot (the game's own card icons are 7 x 5).</summary>
+	public const int IconSize = 7;
 
 	/// <summary>
-	/// The add-on lumps: the cards in the level (sprite lumps, between S_START and S_END), each made from the game's symbol picture in <paramref name="symbolArt"/> (by the path in <see cref="SymbolPaths"/>; a card without one is left as the game has it), a status-bar icon for each card the owner has painted one for, and the
-	/// marker. <paramref name="hudArt"/> maps a resource name from <see cref="HudFiles"/> to the owner's picture; one that is missing leaves the game's own icon, and
-	/// one that is not the icon's size (7 x 5) is reported and left out. Null if the game does not have the pictures this needs.
+	/// The add-on lumps: for each card, the card in the level (two sprite lumps, between S_START and S_END) and its icon on the status bar (<see cref="IconSize"/> pixels square),
+	/// both made from the game's symbol picture in <paramref name="symbolArt"/> (by the path in <see cref="SymbolPaths"/>; a card without one is left as the game has it), and the
+	/// marker. Null if the game does not have the pictures this needs.
 	/// </summary>
-	public static IReadOnlyList<(string Name, byte[] Data)>? Build(Wad wad, IReadOnlyDictionary<string, Rgba>? hudArt = null, Action<string>? report = null, IReadOnlyDictionary<string, Rgba>? symbolArt = null)
+	public static IReadOnlyList<(string Name, byte[] Data)>? Build(Wad wad, IReadOnlyDictionary<string, Rgba>? symbolArt = null, Action<string>? report = null)
 	{
 		if (wad.GetLumpNumber("PLAYPAL") == -1 || Keys.Any(k => wad.GetLumpNumber(k.Letter + "KEYA0") == -1 || wad.GetLumpNumber(k.Hud) == -1))
 		{
@@ -76,20 +75,20 @@ internal static class KeycardTheme
 				sprites.AddRange(made);
 			}
 
-			// the card's icon on the status bar, if the owner has painted one
-			if (hudArt != null && hudArt.TryGetValue(key.HudFile, out var art))
+			// the card's icon on the status bar: the same symbol, made to fit the slot, in the middle of a square the size of the skull keys' icons
+			if (symbolArt != null && symbolArt.TryGetValue(key.SymbolPath, out var iconArt) && Shrink(iconArt, key.Ink, false, palette, IconSize) is { } icon)
 			{
-				var hud = DoomPatch.Decode(wad.ReadLump(key.Hud));
-				if (art.Width == hud.Width && art.Height == hud.Height)
+				var square = new int[IconSize * IconSize];
+				Array.Fill(square, -1);
+				int dx = (IconSize - icon.Width) / 2, dy = (IconSize - icon.Height) / 2;
+				for (var y = 0; y < icon.Height; y++)
 				{
-					var pixels = Enumerable.Range(0, art.Width * art.Height)
-						.Select(i => art.Data[4 * i + 3] < 128 ? -1 : ToPalette(palette, art.Data[4 * i], art.Data[4 * i + 1], art.Data[4 * i + 2])).ToArray();
-					icons.Add((key.Hud, DoomPatch.Encode(hud.Width, hud.Height, hud.Left, hud.Top, pixels)));
+					for (var x = 0; x < icon.Width; x++)
+					{
+						square[(y + dy) * IconSize + x + dx] = icon.Pixels[y * icon.Width + x];
+					}
 				}
-				else
-				{
-					report?.Invoke($"{key.HudFile} is {art.Width} x {art.Height}; the status bar icon must be {hud.Width} x {hud.Height}, so the game's own icon is kept");
-				}
+				icons.Add((key.Hud, DoomPatch.Encode(IconSize, IconSize, 0, 0, square)));
 			}
 		}
 
@@ -141,11 +140,11 @@ internal static class KeycardTheme
 	}
 
 	/// <summary>
-	/// The game's symbol picture made into a DOOM sprite: cropped to what is drawn, scaled down so its longer side is <see cref="SymbolSize"/> (averaging, so thin
+	/// The game's symbol picture made into a DOOM sprite: cropped to what is drawn, scaled down so its longer side is <paramref name="size"/> (<see cref="SymbolSize"/> for the card in the level) (averaging, so thin
 	/// lines stay), a pixel being drawn where at least half of its square of the picture is. Its colours are the picture's own; a picture that is white or grey is
 	/// tinted with the melody's colour by its brightness. The lighter frame (<paramref name="flash"/>) mixes a third of white in. Null if nothing in the picture is drawn.
 	/// </summary>
-	internal static (int Width, int Height, int[] Pixels)? Shrink(Rgba art, (int R, int G, int B) ink, bool flash, DoomPalette palette)
+	internal static (int Width, int Height, int[] Pixels)? Shrink(Rgba art, (int R, int G, int B) ink, bool flash, DoomPalette palette, int size = SymbolSize)
 	{
 		int x0 = art.Width, y0 = art.Height, x1 = -1, y1 = -1;
 		for (var y = 0; y < art.Height; y++)
@@ -165,7 +164,7 @@ internal static class KeycardTheme
 		{
 			return null;
 		}
-		double cw = x1 - x0 + 1, ch = y1 - y0 + 1, scale = SymbolSize / Math.Max(cw, ch);
+		double cw = x1 - x0 + 1, ch = y1 - y0 + 1, scale = size / Math.Max(cw, ch);
 		int w = Math.Max(1, (int)Math.Round(cw * scale)), h = Math.Max(1, (int)Math.Round(ch * scale));
 
 		// the picture's own colours, or the melody's if the picture is white or grey
