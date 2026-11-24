@@ -19,11 +19,18 @@ internal static class HotkeyLegend
 		("Esc", "DOOM Menu"),
 		("WASD", "Move"),
 		("Mouse", "Turn"),
-		("L-Click / Ctrl", "Fire"),
-		("R-Click / Space", "Use"),
+		("L-Click", "Fire"),
+		("R-Click", "Use"),
 		("1 - 7", "Weapons"),
 		("Tab", "Map"),
 	};
+
+	/// <summary>The colour of the "Hotkeys" title: a strong red that reads on the paper, light or dimmed.</summary>
+	private static readonly Color TitleRed = new(0.78f, 0.08f, 0.08f);
+
+	/// <summary>The font size of the rows, and the height each row takes: the rows are spread down the paper evenly, whatever the font's own line height.</summary>
+	private const int RowFontSize = 22;
+	private const float RowHeight = 37f;
 
 	/// <summary>The real legend's size on the map screen (map_screen.tscn: 340 x 454), used if it cannot be found.</summary>
 	private static readonly Vector2 DefaultSize = new(340f, 454f);
@@ -59,7 +66,7 @@ internal static class HotkeyLegend
 			}
 
 			var title = new Label { Text = "Hotkeys", HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, MouseFilter = Control.MouseFilterEnum.Ignore };
-			title.AddThemeColorOverride("font_color", ink);
+			title.AddThemeColorOverride("font_color", TitleRed);
 			title.AddThemeFontSizeOverride("font_size", 40);
 			if (headerFont != null)
 			{
@@ -72,15 +79,15 @@ internal static class HotkeyLegend
 
 			var grid = new GridContainer { Columns = 2, MouseFilter = Control.MouseFilterEnum.Ignore };
 			grid.AddThemeConstantOverride("h_separation", 12);
-			grid.AddThemeConstantOverride("v_separation", 4);
+			grid.AddThemeConstantOverride("v_separation", 0);
 			grid.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.TopWide);
-			grid.OffsetTop = 108f;
+			grid.OffsetTop = 112f;
 			grid.OffsetLeft = 48f;
 			grid.OffsetRight = -34f;
 			foreach (var (key, action) in Rows)
 			{
-				grid.AddChild(MakeLabel(key, rowInk, rowFont, 18, 136f, wrap: false));
-				grid.AddChild(MakeLabel(action, rowInk, rowFont, 18, 110f, wrap: true)); // a long action ("Toggle Map / DOOM") goes on to a second line instead of out of the panel
+				grid.AddChild(MakeLabel(key, rowInk, rowFont, RowFontSize, 90f, wrap: false));
+				grid.AddChild(MakeLabel(action, rowInk, rowFont, RowFontSize, 152f, wrap: true)); // a long action goes on to a second line instead of out of the panel
 			}
 			panel.AddChild(grid);
 
@@ -115,7 +122,7 @@ internal static class HotkeyLegend
 
 	private static Label MakeLabel(string text, Color ink, Font? font, int size, float minWidth, bool wrap)
 	{
-		var label = new Label { Text = text, MouseFilter = Control.MouseFilterEnum.Ignore, CustomMinimumSize = new Vector2(minWidth, 0f) };
+		var label = new Label { Text = text, MouseFilter = Control.MouseFilterEnum.Ignore, CustomMinimumSize = new Vector2(minWidth, RowHeight), VerticalAlignment = VerticalAlignment.Center };
 		if (wrap)
 		{
 			label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
