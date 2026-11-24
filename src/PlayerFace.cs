@@ -23,7 +23,7 @@ internal static class PlayerFace
 	/// Whether the sheets to paint on are written into the data folder (<see cref="WriteSheetsToPaint"/>). Only the owner has any use for them, so this is off in a release;
 	/// set it to true to get them back. Not a const, so the code stays compiled and checked.
 	/// </summary>
-	private static readonly bool WriteSheetsToPaintFiles = false;
+	private static readonly bool WriteSheetsToPaintFiles = true;
 
 	/// <summary>
 	/// The face numbers for a character. The Defect's head is a wide crown that the usual crop cuts the sides off, so its whole head is fitted in
