@@ -1,4 +1,4 @@
-// Our own tests (not from upstream): where the monitor picture and the game go on screen (src/Host/CrtLayout.cs), and that the tuner can find the numbers.
+// Our own tests (not from upstream): where the monitor picture and the game go on screen (src/Host/CrtLayout.cs).
 using System;
 using System.Linq;
 using System.Reflection;
@@ -23,8 +23,8 @@ namespace ManagedDoomTest
             Assert.AreEqual(540f, monitor.Y + monitor.Height / 2, 0.01f);
             Assert.AreEqual(monitor.X + monitor.Width / 2, game.X + game.Width / 2, 0.01f);
             // the game is as big as the glass: 692 x 535 picture pixels at the scale
-            Assert.AreEqual(CrtPicture.GlassWidth * CrtTuning.Scale, game.Width, 0.01f);
-            Assert.AreEqual(CrtPicture.GlassHeight * CrtTuning.Scale, game.Height, 0.01f);
+            Assert.AreEqual(CrtPicture.GlassWidth * CrtPlacement.Scale, game.Width, 0.01f);
+            Assert.AreEqual(CrtPicture.GlassHeight * CrtPlacement.Scale, game.Height, 0.01f);
         }
 
         [TestMethod]
@@ -68,31 +68,6 @@ namespace ManagedDoomTest
         {
             var (monitor, _) = Default(2560, 1080); // an ultrawide
             Assert.AreEqual(1280f, monitor.X + monitor.Width / 2, 0.01f);
-        }
-
-        [TestMethod]
-        public void TheTunerCanFindEveryNumber()
-        {
-            // The rules the VfxSpawner tuner applies (VfxSpawnerCode/TunerPanel.cs, Discover): a public static field, not const, not readonly, a float, int or bool,
-            // marked with an attribute NAMED TunableAttribute that has Group and Step. Checked here the same way, by name.
-            var fields = typeof(CrtTuning).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly);
-            Assert.AreEqual(7, fields.Length, "Scale, OffsetX, OffsetY, ScreenLeft, ScreenTop, ScreenWidth, ScreenHeight");
-            foreach (var field in fields)
-            {
-                Assert.IsFalse(field.IsInitOnly || field.IsLiteral, field.Name + " must not be readonly or const");
-                Assert.AreEqual(typeof(float), field.FieldType, field.Name);
-                var attribute = field.GetCustomAttributes(false).FirstOrDefault(a => a.GetType().Name == "TunableAttribute");
-                Assert.IsTrue(attribute != null, field.Name + " needs the Tunable attribute");
-                var type = attribute.GetType();
-                Assert.AreEqual("Doomed Spire CRT frame", type.GetProperty("Group").GetValue(attribute) as string);
-                Assert.IsTrue(type.GetProperty("Step").GetValue(attribute) is float step && step > 0);
-                Assert.IsFalse(string.IsNullOrEmpty(type.GetProperty("Tip").GetValue(attribute) as string), field.Name + " has a hover tip");
-                var min = (double)type.GetProperty("Min").GetValue(attribute);
-                var max = (double)type.GetProperty("Max").GetValue(attribute);
-                Assert.IsFalse(double.IsNaN(min) || double.IsNaN(max), "both ends of the range are given");
-                var value = (float)field.GetValue(null);
-                Assert.IsTrue(value >= min && value <= max, $"{field.Name} = {value} starts inside its range {min} to {max}");
-            }
         }
 
         [TestMethod]

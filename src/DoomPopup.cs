@@ -36,9 +36,8 @@ internal static class DoomPopup
 		var popup = BuildPopup(out var closeButton, out var view, out var layer, out var refreshLayout);
 		var button = BuildButton();
 
-		// The monitor and the game are placed from the tunable numbers (CrtTuning) every frame while the popup is showing, so a change in the VfxSpawner
-		// tuner shows at once. A per-frame callback: guarded, and its failures are logged in a shrinking way.
-		Action layoutEveryFrame = () =>
+		// The monitor and the game are placed when the popup opens and again whenever the screen's size changes. Guarded: a failure is logged in a shrinking way.
+		Action placeMonitor = () =>
 		{
 			try
 			{
@@ -49,16 +48,7 @@ internal static class DoomPopup
 				ModLog.Fail("layout", "placing the monitor and the game", e);
 			}
 		};
-		SceneTree? layoutTree = null;
-
-		void StopLayoutUpdates()
-		{
-			if (layoutTree != null && GodotObject.IsInstanceValid(layoutTree))
-			{
-				layoutTree.ProcessFrame -= layoutEveryFrame;
-			}
-			layoutTree = null;
-		}
+		popup.Resized += placeMonitor;
 
 		void SetOpen(bool open)
 		{
@@ -70,14 +60,11 @@ internal static class DoomPopup
 			ModLog.Info("map", open ? "popup opened" : "popup closed");
 			if (open)
 			{
-				layoutEveryFrame(); // in place before the first frame is drawn
-				layoutTree = popup.GetTree();
-				layoutTree.ProcessFrame += layoutEveryFrame;
+				placeMonitor(); // in place before the first frame is drawn
 				view.Start();
 			}
 			else
 			{
-				StopLayoutUpdates();
 				view.Suspend(); // the game stays where it is; opening again carries on
 			}
 		}
@@ -91,7 +78,6 @@ internal static class DoomPopup
 		// The run is over when the map screen leaves the tree: only then is a paused game thrown away.
 		map.TreeExited += () => ModLog.Try("map", "ending DOOM with the run", () =>
 		{
-			StopLayoutUpdates();
 			view.Shutdown();
 		});
 
@@ -268,21 +254,9 @@ internal static class DoomPopup
 
 		view = new DoomView(screen, root, closeButton);
 
-		var lastSize = Vector2.Zero;
-		var lastValues = new float[7];
-		var values = new float[7]; // reused every frame, so looking for a change makes nothing for the garbage collector
 		refreshLayout = () =>
 		{
 			var size = root.Size;
-			values[0] = CrtTuning.Scale; values[1] = CrtTuning.OffsetX; values[2] = CrtTuning.OffsetY; values[3] = CrtTuning.ScreenLeft;
-			values[4] = CrtTuning.ScreenTop; values[5] = CrtTuning.ScreenWidth; values[6] = CrtTuning.ScreenHeight;
-			if (size == lastSize && values.AsSpan().SequenceEqual(lastValues))
-			{
-				return;
-			}
-			lastSize = size;
-			values.CopyTo(lastValues, 0);
-
 			var (monitorBox, gameBox) = CrtLayout.Current(size.X, size.Y);
 			monitor.Position = new Vector2(monitorBox.X, monitorBox.Y);
 			monitor.Size = new Vector2(monitorBox.Width, monitorBox.Height);

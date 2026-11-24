@@ -7,35 +7,19 @@ namespace DoomedSpire.Host;
 internal readonly record struct Box(float X, float Y, float Width, float Height);
 
 /// <summary>
-/// The numbers that put the game on the old-monitor picture (assets/crt.png): how big the monitor is and where it sits on the screen, and where the
-/// glass is on the picture. <b>Live-tunable</b>: the VfxSpawner mod (F9, "Show tuner", group "Doomed Spire CRT frame") changes these while the game
-/// runs, and "Copy values" there gives the numbers to bake in as the new defaults. The popup reads them every frame, so a change shows at once.
-/// The picture's own measurements are in the CrtPicture constants below.
+/// Where the old-monitor picture (assets/crt.png) goes on the screen and where the game goes on it. The monitor is <see cref="Scale"/> times the picture's own size
+/// (1.44 is the biggest that fits a 1080p screen with all of it showing), centred and moved by the offsets, and the game fills the glass (the numbers in
+/// <see cref="CrtPicture"/>). The picture's own measurements are in the CrtPicture constants below.
 /// </summary>
-internal static class CrtTuning
+internal static class CrtPlacement
 {
-	private const string Group = "Doomed Spire CRT frame";
-
-	[Tunable(Group, 0.01f, "How big the whole monitor is. 1 is the picture's own size (848 x 744); 1.45 is the most that fits a 1080p screen with all of it showing. Bigger pushes the edges off screen, so use Offset Y with it.", Min = 0.5, Max = 2)]
-	public static float Scale = 1.44f;
-
-	[Tunable(Group, 1f, "Moves the whole monitor sideways, in screen pixels (positive is right). 0 is centred.", Min = -400, Max = 400)]
-	public static float OffsetX = 0f;
-
-	[Tunable(Group, 1f, "Moves the whole monitor up or down, in screen pixels (positive is down). 0 is centred.", Min = -400, Max = 400)]
-	public static float OffsetY = 0f;
-
-	[Tunable(Group, 1f, "Where the left edge of the game is on the monitor picture, in the picture's own pixels. The glass starts at 78.", Min = 0, Max = 400)]
-	public static float ScreenLeft = CrtPicture.GlassLeft;
-
-	[Tunable(Group, 1f, "Where the top edge of the game is on the monitor picture, in the picture's own pixels. The glass starts at 78.", Min = 0, Max = 400)]
-	public static float ScreenTop = CrtPicture.GlassTop;
-
-	[Tunable(Group, 1f, "How wide the game is, in the picture's own pixels. The glass is 692 wide.", Min = 200, Max = 848)]
-	public static float ScreenWidth = CrtPicture.GlassWidth;
-
-	[Tunable(Group, 1f, "How tall the game is, in the picture's own pixels. The glass is 535 tall.", Min = 200, Max = 744)]
-	public static float ScreenHeight = CrtPicture.GlassHeight;
+	public const float Scale = 1.44f;
+	public const float OffsetX = 0f;
+	public const float OffsetY = 0f;
+	public const float ScreenLeft = CrtPicture.GlassLeft;
+	public const float ScreenTop = CrtPicture.GlassTop;
+	public const float ScreenWidth = CrtPicture.GlassWidth;
+	public const float ScreenHeight = CrtPicture.GlassHeight;
 }
 
 /// <summary>What was measured on assets/crt.png (848 x 744 pixels): the dark glass of the screen, found from where the brightness jumps from the lighter bevel around it.</summary>
@@ -49,7 +33,7 @@ internal static class CrtPicture
 	public const float GlassHeight = 535f;  // bottom edge at 613
 }
 
-/// <summary>Works out where the monitor picture and the game go on a canvas, from the tunable numbers. Pure arithmetic, so the tests cover it.</summary>
+/// <summary>Works out where the monitor picture and the game go on a canvas. Pure arithmetic, so the tests cover it.</summary>
 internal static class CrtLayout
 {
 	/// <summary>
@@ -70,8 +54,8 @@ internal static class CrtLayout
 		return (monitor, game);
 	}
 
-	/// <summary>The same, from the current tunable values.</summary>
+	/// <summary>The same, with the monitor's own placement (<see cref="CrtPlacement"/>).</summary>
 	public static (Box Monitor, Box Game) Current(float canvasWidth, float canvasHeight) =>
-		Compute(canvasWidth, canvasHeight, CrtTuning.Scale, CrtTuning.OffsetX, CrtTuning.OffsetY,
-			CrtTuning.ScreenLeft, CrtTuning.ScreenTop, CrtTuning.ScreenWidth, CrtTuning.ScreenHeight);
+		Compute(canvasWidth, canvasHeight, CrtPlacement.Scale, CrtPlacement.OffsetX, CrtPlacement.OffsetY,
+			CrtPlacement.ScreenLeft, CrtPlacement.ScreenTop, CrtPlacement.ScreenWidth, CrtPlacement.ScreenHeight);
 }
