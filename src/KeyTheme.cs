@@ -38,12 +38,12 @@ internal static class KeyTheme
 			}
 
 			var symbols = new Dictionary<string, Rgba>();
-			foreach (var path in KeycardTheme.SymbolPaths)
+			foreach (var symbolPath in KeycardTheme.SymbolPaths)
 			{
-				var picture = ReadGameSymbol(path);
+				var picture = ReadGameSymbol(symbolPath);
 				if (picture != null)
 				{
-					symbols[path] = picture;
+					symbols[symbolPath] = picture;
 				}
 			}
 
