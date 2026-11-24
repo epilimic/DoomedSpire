@@ -115,7 +115,7 @@ internal sealed class DoomView
 
 		message = new Label
 		{
-			Text = "DOOM goes here",
+			Visible = false,
 			HorizontalAlignment = HorizontalAlignment.Center,
 			VerticalAlignment = VerticalAlignment.Center,
 			AutowrapMode = TextServer.AutowrapMode.WordSmart,
@@ -171,7 +171,6 @@ internal sealed class DoomView
 			{
 				// a new game is still being got ready (the enemies are drawn first): carry on with it when it is, instead of starting a second one
 				startCancelled = false;
-				Say("Getting the enemies ready...");
 				return;
 			}
 			if (session != null)
@@ -219,6 +218,7 @@ internal sealed class DoomView
 			return;
 		}
 		HidePicker();
+		message.Visible = false; // an earlier error is gone; the screen stays black until the game is ready
 		var label = wad?.Name ?? BuiltInWad.Label;
 		starting = true;
 		startCancelled = false;
@@ -231,8 +231,7 @@ internal sealed class DoomView
 			var dataFolder = Path.Combine(BuiltInWad.DataFolder, "data");
 			// The character's face for the status bar, as an add-on WAD (null keeps Doomguy). Made here, each new game, from the current tuning.
 			var faces = PlayerFace.TryBuild(path, dataFolder);
-			// Slay the Spire enemies for DOOM's monsters, as another add-on WAD (null keeps DOOM's own). Only for the shareware game.
-			Say("Getting the enemies ready...");
+			// Slay the Spire enemies for DOOM's monsters, as another add-on WAD (null keeps DOOM's own). Only for the original DOOM 1 games.
 			var enemies = await EnemySprites.TryBuildAsync(screen, path, dataFolder);
 			if (shutdowns != shutdownsAtStart || !GodotObject.IsInstanceValid(screen))
 			{
