@@ -6,13 +6,15 @@ namespace DoomedSpire;
 /// <summary>Godot's key names to DOOM's. Same table as the original frontend (SilkUserInput.SilkToDoom); keys DOOM does not use map to Unknown and are ignored.</summary>
 internal static class KeyMap
 {
+	/// <summary>The backtick key, by its label or by its place on the keyboard (so it is the key under Esc on keyboards where that key is not labelled with a backtick).</summary>
+	public static bool IsToggleKey(InputEventKey e) => e.Keycode == Key.Quoteleft || e.PhysicalKeycode == Key.Quoteleft;
+
 	public static DoomKey ToDoom(InputEventKey e)
 	{
-		// The backtick key stands in for DOOM's Esc (which opens DOOM's menu); the real Esc leaves DOOM, see DoomView. By position as well as by label,
-		// so it is the key under Esc on keyboards where that key is not labelled with a backtick.
-		if (e.Keycode == Key.Quoteleft || e.PhysicalKeycode == Key.Quoteleft)
+		// The backtick key is not DOOM's: it toggles between DOOM and the map screen (DoomView, ToggleHotkey), so DOOM never gets it.
+		if (IsToggleKey(e))
 		{
-			return DoomKey.Escape;
+			return DoomKey.Unknown;
 		}
 
 		// Keycode is the key as labelled (so a French keyboard's "W" is W); PhysicalKeycode is only the fallback.

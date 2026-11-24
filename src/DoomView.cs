@@ -18,7 +18,9 @@ namespace DoomedSpire;
 ///  - every frame comes from SceneTree.ProcessFrame, connected only while the game is running;
 ///  - keys and the mouse arrive through the GuiInput signal of the picture area, which holds keyboard focus while the game runs.
 ///
-/// Keys: every key goes to DOOM except Esc, which leaves DOOM and drops back to the map screen (it leaves on release, so both halves of the key stay in DOOM). The backtick key is DOOM's own Esc (its menu). Nothing reaches the game: the picture area accepts
+/// Keys: every key goes to DOOM, Esc included (it opens and closes DOOM's own menu, whose Quit Game ends the game and leaves). The one exception is the backtick key,
+/// which is not DOOM's: it toggles between DOOM and the map screen (here, DOOM to the map; on the map screen it is ToggleHotkey, through KeyLock), and the
+/// game stays in memory exactly where it was. Nothing reaches the game: the picture area accepts
 /// every key event (stopping the game's _UnhandledInput hotkeys), and KeyLock (src/KeyLock.cs) stops the handlers that read keys before the GUI.
 /// Mouse: while DOOM runs the mouse is captured (Input.MouseMode Captured): it is locked to the game window, so it can never wander onto another
 /// monitor, its cursor is hidden, and it gives unlimited relative movement, so turning never stops at a screen edge. Any sideways movement turns
@@ -64,7 +66,7 @@ internal sealed class DoomView
 	private Window? inputWindow;
 	private Input.MouseModeEnum mouseModeBefore;
 	private bool mouseCaptured;
-	private bool escapeWasDown;
+	private bool toggleKeyWasDown;
 	private bool yielding;
 	private int overlayCheckCountdown;
 	private bool overlayOpen;
@@ -317,7 +319,7 @@ internal sealed class DoomView
 	}
 
 	/// <summary>
-	/// Called when the popup closes (Esc, the map closing, or DOOM's own quit). Everything is switched off at once: the frames, the audio, the mouse capture,
+	/// Called when the popup closes (the backtick key, the map closing, or DOOM's own quit). Everything is switched off at once: the frames, the audio, the mouse capture,
 	/// the key lock. The game itself stays in memory, paused exactly where it is, so opening the popup again carries on. Only if the player quit from
 	/// DOOM's menu is the game thrown away.
 	/// </summary>
@@ -352,7 +354,7 @@ internal sealed class DoomView
 		failures = 0;
 		accumulator = 0;
 		windowWasUnfocused = false;
-		escapeWasDown = false;
+		toggleKeyWasDown = ToggleKeyDown(); // a key still held from opening DOOM must not close it again
 		yielding = false;
 		overlayOpen = false;
 		overlayCheckCountdown = 0;
@@ -516,7 +518,7 @@ internal sealed class DoomView
 				yielding = false;
 				KeyLock.Active = true;
 				closeButton.Visible = false;
-				escapeWasDown = false;
+				toggleKeyWasDown = ToggleKeyDown();
 				lastTimestamp = Stopwatch.GetTimestamp();
 				ModLog.Info("game", "the tool closed; the game carries on");
 			}
@@ -528,16 +530,16 @@ internal sealed class DoomView
 				Input.MouseMode = Input.MouseModeEnum.Captured;
 			}
 
-			// Esc leaves DOOM, on release. Read from the keyboard state itself every frame rather than from key events, so the way out never depends on
-			// keyboard focus or event delivery: the Close button is hidden while a game runs and every other key is locked, so Esc must always work.
-			var escapeDown = Input.IsKeyPressed(Key.Escape);
-			if (escapeWasDown && !escapeDown)
+			// The backtick key leaves DOOM for the map screen, when it goes down. Read from the keyboard state itself every frame rather than from key events, so
+			// the way out never depends on keyboard focus or event delivery: the Close button is hidden while a game runs and every other key is DOOM's.
+			var toggleDown = ToggleKeyDown();
+			if (toggleDown && !toggleKeyWasDown)
 			{
-				escapeWasDown = false;
+				toggleKeyWasDown = true;
 				RequestClose?.Invoke();
 				return;
 			}
-			escapeWasDown = escapeDown;
+			toggleKeyWasDown = toggleDown;
 
 			var now = Stopwatch.GetTimestamp();
 			var elapsed = (double)(now - lastTimestamp) / Stopwatch.Frequency;
@@ -551,7 +553,7 @@ internal sealed class DoomView
 				if (current.Tick() == UpdateResult.Completed)
 				{
 					ModLog.Info("game", "the player quit from DOOM's menu");
-					endGame = true; // unlike Esc, quitting ends the game: the next time starts a new one
+					endGame = true; // unlike the backtick key, quitting ends the game: the next time starts a new one
 					RequestClose?.Invoke();
 					return;
 				}
@@ -587,7 +589,7 @@ internal sealed class DoomView
 
 	/// <summary>
 	/// Every input event that reaches the picture area. Each one is accepted, so nothing else in the game reacts to it.
-	/// Keys go to DOOM, except Esc. The mouse buttons shoot and use, from anywhere on the screen (turning is read every frame, see OnFrame).
+	/// Keys go to DOOM (Esc too), except the backtick key. The mouse buttons shoot and use, from anywhere on the screen (turning is read every frame, see OnFrame).
 	/// </summary>
 	private void OnGuiInput(InputEvent inputEvent)
 	{
@@ -606,10 +608,6 @@ internal sealed class DoomView
 					if (key.Echo)
 					{
 						return;
-					}
-					if (key.Keycode == Key.Escape || key.PhysicalKeycode == Key.Escape)
-					{
-						return; // swallowed here so nothing else reacts to it; leaving is done in OnFrame
 					}
 					var doomKey = KeyMap.ToDoom(key);
 					if (doomKey != DoomKey.Unknown)
@@ -684,6 +682,9 @@ internal sealed class DoomView
 		overlayOpen = found;
 		return found;
 	}
+
+	/// <summary>Is the backtick key down, by its label or by its place on the keyboard (the key under Esc)?</summary>
+	private static bool ToggleKeyDown() => Input.IsKeyPressed(Key.Quoteleft) || Input.IsPhysicalKeyPressed(Key.Quoteleft);
 
 	private void CaptureMouse()
 	{

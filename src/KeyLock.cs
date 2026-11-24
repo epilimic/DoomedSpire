@@ -12,6 +12,7 @@ namespace DoomedSpire;
 /// hotkey handlers (they read keys in _UnhandledInput, after the GUI). But a handful of game nodes read keys earlier, in _Input, before any control
 /// sees them, and some of those would act on DOOM's keys: for example NFeedbackScreenOpener opens the feedback screen on F2 (DOOM's save key), and
 /// NControllerManager switches the whole game into keyboard-navigation mode (disabling the mouse) on arrow and WASD keys when that preference is on.
+/// While DOOM is not running the same rule also takes the backtick key on the map screen (ToggleHotkey), because the game's dev console opens on it too.
 /// Instead of listing such nodes one by one (a game update would add new ones), this puts one rule in front of EVERY keyboard-reading input method
 /// the game declares (_Input, _ShortcutInput, _UnhandledKeyInput, _UnhandledInput on any Node in the game's assembly): while <see cref="Active"/>,
 /// a key event is not passed on to it. Mouse and other events always pass, so the game's mouse handling is untouched.
@@ -82,7 +83,15 @@ internal static class KeyLock
 	{
 		try
 		{
-			return !(Active && __args.Length > 0 && __args[0] is InputEventKey);
+			if (__args.Length == 0 || __args[0] is not InputEventKey key)
+			{
+				return true;
+			}
+			if (Active)
+			{
+				return false; // DOOM is running: no key reaches the game
+			}
+			return !ToggleHotkey.Take(key); // the backtick key, on the map screen, opens DOOM and is not passed on
 		}
 		catch (Exception)
 		{

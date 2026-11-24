@@ -69,6 +69,28 @@ internal static class DoomPopup
 			}
 		}
 
+		// The backtick key toggles between the map screen and DOOM (see ToggleHotkey). It applies when the popup is open (to close it, for the states where no game is
+		// running to read the key itself), or when the map screen is showing with nothing over it, no dev console and no text being typed.
+		Func<bool> hotkeyApplies = () =>
+		{
+			if (!GodotObject.IsInstanceValid(popup) || !GodotObject.IsInstanceValid(map))
+			{
+				return false;
+			}
+			if (popup.Visible)
+			{
+				return true;
+			}
+			if (!map.IsOpen || !map.IsVisibleInTree() || MegaCrit.Sts2.Core.Nodes.Debug.NDevConsole.IsConsoleVisible || (MegaCrit.Sts2.Core.Nodes.Screens.Capstones.NCapstoneContainer.Instance?.InUse ?? false))
+			{
+				return false;
+			}
+			var focus = map.GetViewport()?.GuiGetFocusOwner();
+			return focus is not LineEdit && focus is not TextEdit;
+		};
+		Action hotkeyToggle = () => ModLog.Try("map", "toggling DOOM with the hotkey", () => SetOpen(!popup.Visible));
+		ToggleHotkey.Register(hotkeyApplies, hotkeyToggle);
+
 		view.RequestClose = () => SetOpen(false);
 		button.Pressed += () => ModLog.Try("map", "opening the popup", () => SetOpen(true));
 		closeButton.Pressed += () => ModLog.Try("map", "closing the popup", () => SetOpen(false));
@@ -78,6 +100,7 @@ internal static class DoomPopup
 		// The run is over when the map screen leaves the tree: only then is a paused game thrown away.
 		map.TreeExited += () => ModLog.Try("map", "ending DOOM with the run", () =>
 		{
+			ToggleHotkey.Unregister(hotkeyToggle);
 			view.Shutdown();
 		});
 
