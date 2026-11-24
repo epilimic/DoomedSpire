@@ -115,8 +115,8 @@ internal static class KeycardTheme
 		{
 			var card = $"{key.Colour} {key.Melody} Melody Card";
 			DoomString.ReplaceByName(key.Pickup, $"Picked up a {card}.");
-			DoomString.ReplaceByName(key.NeedDoor, $"You need a {card} to open this door");
-			DoomString.ReplaceByName(key.NeedObject, $"You need a {card} to activate this object");
+			DoomString.ReplaceByName(key.NeedDoor, $"You need a {card} to open");
+			DoomString.ReplaceByName(key.NeedObject, $"You need a {card} to use");
 		}
 	}
 
