@@ -12,7 +12,32 @@ namespace ManagedDoomTest
     [TestClass]
     public class KeycardTests
     {
-        private static IReadOnlyList<(string Name, byte[] Data)> Theme(Wad wad, IReadOnlyDictionary<string, Rgba> art = null) => KeycardTheme.Build(wad, art);
+        private static IReadOnlyList<(string Name, byte[] Data)> Theme(Wad wad, IReadOnlyDictionary<string, Rgba> art = null) => KeycardTheme.Build(wad, art, null, Symbols());
+
+        /// <summary>Stand-ins for the game's three symbol pictures: 64 x 48 with a transparent margin, a plus sign (white, so it is tinted) in the first, the same in the melody's own colour in the others.</summary>
+        private static Dictionary<string, Rgba> Symbols((byte R, byte G, byte B)? colour = null)
+        {
+            var result = new Dictionary<string, Rgba>();
+            var paths = KeycardTheme.SymbolPaths;
+            for (var n = 0; n < paths.Count; n++)
+            {
+                var data = new byte[64 * 48 * 4];
+                var c = n == 0 ? (R: (byte)255, G: (byte)255, B: (byte)255) : n == 1 ? (R: (byte)255, G: (byte)40, B: (byte)40) : (R: (byte)40, G: (byte)255, B: (byte)40);
+                for (var y = 8; y < 40; y++)
+                {
+                    for (var x = 16; x < 48; x++)
+                    {
+                        var bar = (x >= 29 && x < 35) || (y >= 21 && y < 27);
+                        if (n == 2) bar = (x + y) % 16 < 6;
+                        if (!bar) continue;
+                        var o = 4 * (y * 64 + x);
+                        data[o] = c.R; data[o + 1] = c.G; data[o + 2] = c.B; data[o + 3] = 255;
+                    }
+                }
+                result[paths[n]] = new Rgba(64, 48, data);
+            }
+            return result;
+        }
 
         private static (double R, double G, double B) Average(int[] pixels, DoomPalette palette, Func<int, bool> include = null)
         {
@@ -36,39 +61,56 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
-        public void TheThreeCardsAreReplacedByTheirSymbolsAloneWithADarkEdge()
+        public void TheCardsAreReplacedByTheGamesSymbolPicturesMadeSmall()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))
             {
                 var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
                 var lumps = Theme(wad).ToDictionary(l => l.Name, l => l.Data);
-                var symbolPixels = new Dictionary<char, int> { ['B'] = 15, ['Y'] = 14, ['R'] = 14 }; // at least the pixels of the symbols of Cho (rings), Ki (cross) and Wah (zigzag)
                 foreach (var letter in "BYR")
                 {
                     var original = DoomPatch.Decode(wad.ReadLump(letter + "KEYA0"));
                     var frames = new[] { "A", "B" }.Select(f => DoomPatch.Decode(lumps[letter + "KEY" + f + "0"])).ToArray();
                     foreach (var themed in frames)
                     {
-                        Assert.IsFalse((original.Width, original.Height) == (themed.Width, themed.Height), "the card's body is gone, the picture is the symbol's own size");
+                        Assert.IsTrue(Math.Max(themed.Width, themed.Height) == KeycardTheme.SymbolSize, $"{letter}: the longer side is {KeycardTheme.SymbolSize} pixels ({themed.Width} x {themed.Height})");
+                        Assert.IsTrue(themed.Width < themed.Height || letter == 'R' || themed.Width == themed.Height, $"{letter}: the picture's proportions are kept");
                         Assert.AreEqual(themed.Height + 3, themed.Top, "hung 3 pixels above the floor like the card was");
                         Assert.AreEqual(themed.Width / 2, themed.Left, "centred");
-                        var drawn = themed.Pixels.Where(p => p >= 0).ToList();
-                        Assert.IsTrue(drawn.Count >= symbolPixels[letter] * 2, $"{letter}: the symbol and its edge are drawn ({drawn.Count} pixels)");
-                        var inkColour = drawn.Select(p => palette.Colour(p)).OrderByDescending(c => c.R + c.G + c.B).First();
-                        var ink = drawn.Count(p => palette.Colour(p) == inkColour);
-                        Assert.IsTrue(ink >= symbolPixels[letter], $"{letter}: the symbol is in one light colour ({ink} pixels)");
-                        var edge = drawn.Where(p => palette.Colour(p) != inkColour).ToList();
-                        Assert.IsTrue(edge.Count > 0 && edge.All(p => { var c = palette.Colour(p); return c.R < 60 && c.G < 60 && c.B < 60; }), $"{letter}: the rest is a dark edge");
-                        Assert.AreEqual(-1, themed.Pixels[0], "the corners are clear");
+                        Assert.IsTrue(themed.Pixels.Count(p => p >= 0) >= 30, $"{letter}: the symbol is drawn");
+                        Assert.IsTrue(themed.Pixels.Count(p => p < 0) > 0, $"{letter}: and is not a square");
+                        Assert.AreEqual(-1, themed.Pixels[0], "the transparent margin of the picture is cropped away, but its corners stay clear");
                     }
-                    Assert.IsFalse(frames[0].Pixels.SequenceEqual(frames[1].Pixels), $"{letter}: the second frame is a different, lighter colour so it flashes");
+                    Assert.IsFalse(frames[0].Pixels.SequenceEqual(frames[1].Pixels), $"{letter}: the second frame is lighter so it flashes");
                     int Brightest(int[] px) => px.Where(p => p >= 0).Select(p => palette.Colour(p)).Max(c => c.R + c.G + c.B);
                     Assert.IsTrue(Brightest(frames[1].Pixels) > Brightest(frames[0].Pixels), $"{letter}: frame B is lighter");
                 }
+                // a white picture takes the melody's colour (Cho: a light blue, not a green), a coloured one keeps its own
+                var cho = DoomPatch.Decode(lumps["BKEYA0"]).Pixels.Where(p => p >= 0).Select(p => palette.Colour(p)).ToList();
+                Assert.IsTrue(cho.All(c => c.B > c.G + 20 && c.B > c.R + 20), "Cho's symbol is blue");
+                Assert.IsTrue(DoomPatch.Decode(lumps["YKEYA0"]).Pixels.Where(p => p >= 0).Select(p => palette.Colour(p)).All(c => c.R > 150 && c.G < 120), "a red picture stays red");
                 Assert.IsFalse(lumps["BKEYA0"].SequenceEqual(lumps["RKEYA0"]) || lumps["BKEYA0"].SequenceEqual(lumps["YKEYA0"]), "the three symbols are different");
                 // the status bar keeps the game's own icons until the owner paints them
                 Assert.IsFalse(lumps.ContainsKey("STKEYS0") || lumps.ContainsKey("STKEYS1") || lumps.ContainsKey("STKEYS2"));
                 Assert.IsTrue(lumps.ContainsKey(KeycardTheme.Marker));
+            }
+        }
+
+        [TestMethod]
+        public void ACardWhoseSymbolPictureIsMissingOrEmptyKeepsTheGamesOwnCard()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var symbols = Symbols();
+                symbols.Remove(KeycardTheme.SymbolPaths[1]);
+                symbols[KeycardTheme.SymbolPaths[2]] = new Rgba(8, 8, new byte[8 * 8 * 4]);
+                var warnings = new List<string>();
+                var lumps = KeycardTheme.Build(wad, null, warnings.Add, symbols).ToDictionary(l => l.Name, l => l.Data);
+                Assert.IsTrue(lumps.ContainsKey("BKEYA0") && lumps.ContainsKey("BKEYB0"));
+                Assert.IsFalse(lumps.ContainsKey("YKEYA0") || lumps.ContainsKey("YKEYB0"), "no picture: the game's card stays");
+                Assert.IsFalse(lumps.ContainsKey("RKEYA0") || lumps.ContainsKey("RKEYB0"), "an empty picture: the game's card stays");
+                Assert.IsTrue(warnings.Any(w => w.Contains("symbol_wah.png")), "and an empty one is reported");
+                Assert.IsTrue(KeycardTheme.Build(wad).All(l => !l.Name.EndsWith("KEYA0")), "with no pictures at all no card is changed");
             }
         }
 
