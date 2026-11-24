@@ -25,6 +25,13 @@ internal static class PlayerFace
 	/// </summary>
 	private static readonly bool WriteSheetsToPaintFiles = false;
 
+	/// <summary>
+	/// The face numbers for a character. The Defect's head is a wide crown that the usual crop cuts the sides off, so its whole head is fitted in
+	/// (<see cref="FaceSettings.FitWideHead"/>); every other character is made as before.
+	/// </summary>
+	private static FaceSettings SettingsFor(MegaCrit.Sts2.Core.Models.CharacterModel character, FaceSettings settings) =>
+		string.Equals(character.Id.Entry, "DEFECT", StringComparison.OrdinalIgnoreCase) ? settings with { FitWideHead = true } : settings;
+
 	/// <summary>Builds the add-on WAD for the current character into <paramref name="folder"/> and returns its path, or null (log says why) to keep Doomguy.</summary>
 	public static string? TryBuild(string iwadPath, string folder)
 	{
@@ -56,7 +63,7 @@ internal static class PlayerFace
 				var original = Patch.FromWad(wad, name);
 				return new PatchSpec(original.Width, original.Height, original.LeftOffset, original.TopOffset);
 			};
-			var lumps = FaceFactory.Build(picture, spec, palette, FaceSettings.Default);
+			var lumps = FaceFactory.Build(picture, spec, palette, SettingsFor(character, FaceSettings.Default));
 
 			Directory.CreateDirectory(folder);
 			var id = character.Id.Entry.ToLowerInvariant();
@@ -149,7 +156,7 @@ internal static class PlayerFace
 					allWritten = false;
 					continue;
 				}
-				var faces = FaceFactory.Build(picture, spec, palette, settings);
+				var faces = FaceFactory.Build(picture, spec, palette, SettingsFor(character, settings));
 				WriteSheet(FaceFactory.Sheet(faces, palette, 1, transparentBackground: true, labels: true), SheetPath(character));
 			}
 			catch (Exception e)

@@ -10,7 +10,7 @@ namespace DoomedSpire.Host;
 /// The numbers the face factory works from. <paramref name="Neutral"/> makes every face the same
 /// colour, with no blood and no expression tints: only the head's position and angle differ (the tests use it; it is how a sheet to paint on was once made).
 /// </summary>
-internal readonly record struct FaceSettings(float CropLeft, float CropTop, float CropWidth, float CropHeight, float Damage, float Brightness, float Blood = 1f, bool Neutral = false)
+internal readonly record struct FaceSettings(float CropLeft, float CropTop, float CropWidth, float CropHeight, float Damage, float Brightness, float Blood = 1f, bool Neutral = false, bool FitWideHead = false)
 {
 	public static FaceSettings Default => new(0f, 0f, 1f, 1f, 1f, 1f, 1f);
 }
@@ -180,6 +180,17 @@ internal static class FaceFactory
 		var x0 = cropX + (cropW - windowW) / 2;
 		var y0 = cropY + (cropH - windowH) / 2;
 
+		// With the FitWideHead setting (the Defect's): a head wider than the face would have its sides cut off by that (the crown's side lobes), so the whole head
+		// is fitted into the face instead, centred on what is drawn in the picture, a little smaller and with some room above and below. A head that fits is not touched.
+		if (settings.FitWideHead && ClipsTheHead(source, cropX, cropY, cropW, cropH, x0, windowW, out var head))
+		{
+			var fit = Math.Min(width / (double)(head.Right - head.Left + 1), height / (double)(head.Bottom - head.Top + 1));
+			windowW = width / fit;
+			windowH = height / fit;
+			x0 = (head.Left + head.Right + 1) / 2.0 - windowW / 2;
+			y0 = (head.Top + head.Bottom + 1) / 2.0 - windowH / 2;
+		}
+
 		var result = new Image(width, height);
 		for (var ty = 0; ty < height; ty++)
 		{
@@ -220,6 +231,39 @@ internal static class FaceFactory
 			}
 		}
 		return result;
+	}
+
+	/// <summary>
+	/// Whether the window that fills the face (<paramref name="x0"/>, <paramref name="windowW"/> wide, across the picture) cuts off a real part of what is drawn at its left
+	/// or right (more than 1 pixel in 100 of the drawn pixels: stray pixels at the edge do not count). <paramref name="head"/> is then the box round everything drawn
+	/// in the wanted part of the picture.
+	/// </summary>
+	private static bool ClipsTheHead(Rgba source, double cropX, double cropY, double cropW, double cropH, double x0, double windowW, out (int Left, int Top, int Right, int Bottom) head)
+	{
+		int left = source.Width, right = -1, top = source.Height, bottom = -1, drawn = 0, outside = 0;
+		var xStart = Math.Max(0, (int)Math.Floor(cropX));
+		var xEnd = Math.Min(source.Width, (int)Math.Ceiling(cropX + cropW));
+		var yStart = Math.Max(0, (int)Math.Floor(cropY));
+		var yEnd = Math.Min(source.Height, (int)Math.Ceiling(cropY + cropH));
+		for (var y = yStart; y < yEnd; y++)
+		{
+			for (var x = xStart; x < xEnd; x++)
+			{
+				if (source.Data[4 * (y * source.Width + x) + 3] < 128)
+				{
+					continue;
+				}
+				drawn++;
+				left = Math.Min(left, x); right = Math.Max(right, x);
+				top = Math.Min(top, y); bottom = Math.Max(bottom, y);
+				if (x + 1 <= x0 || x >= x0 + windowW)
+				{
+					outside++;
+				}
+			}
+		}
+		head = (left, top, right, bottom);
+		return drawn > 0 && outside * 100 > drawn;
 	}
 
 	// ---------------------------------------------------------------- one face

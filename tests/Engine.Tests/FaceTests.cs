@@ -452,6 +452,69 @@ namespace ManagedDoomTest
             }
         }
 
+        /// <summary>A transparent picture with an opaque ellipse filling its width (a wide head) or its height (a tall one).</summary>
+        private static Rgba Ellipse(int width, int height, int ellipseWidth, int ellipseHeight)
+        {
+            var data = new byte[width * height * 4];
+            double cx = width / 2.0, cy = height / 2.0;
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    var u = (x + 0.5 - cx) / (ellipseWidth / 2.0);
+                    var v = (y + 0.5 - cy) / (ellipseHeight / 2.0);
+                    if (u * u + v * v > 1) continue;
+                    var o = 4 * (y * width + x);
+                    data[o] = 210; data[o + 1] = 160; data[o + 2] = 120; data[o + 3] = 255;
+                }
+            }
+            return new Rgba(width, height, data);
+        }
+
+        /// <summary>How many pixels of a face are drawn in each column of its lump.</summary>
+        private static int[] ColumnCounts(IReadOnlyList<(string Name, byte[] Data)> faces, string name)
+        {
+            var patch = Patch.FromData(name, faces.First(f => f.Name == name).Data);
+            var counts = new int[patch.Width];
+            for (var x = 0; x < patch.Width; x++) counts[x] = patch.Columns[x].Sum(post => post.Length);
+            return counts;
+        }
+
+        [TestMethod]
+        public void AWideHeadIsFittedWholeWhenAskedAndNotCutAtTheSides()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
+                Func<string, PatchSpec> spec = name => { var p = Patch.FromWad(wad, name); return new PatchSpec(p.Width, p.Height, p.LeftOffset, p.TopOffset); };
+                // a head twice as wide as it is tall, filling its picture's width: the usual crop (the face is taller than wide) cuts its sides off flat
+                var wide = Ellipse(200, 120, 200, 100);
+                var cut = FaceFactory.Build(wide, spec, palette, FaceSettings.Default with { Neutral = true });
+                var fitted = FaceFactory.Build(wide, spec, palette, FaceSettings.Default with { Neutral = true, FitWideHead = true });
+                var cutColumns = ColumnCounts(cut, "STFST00");
+                var fittedColumns = ColumnCounts(fitted, "STFST00");
+                int Edge(int[] columns) => columns.Where(c => c > 0).First();
+                var widest = fittedColumns.Max();
+                Assert.IsTrue(cutColumns.Where(c => c > 0).Take(2).Max() > cutColumns.Max() * 0.8, "without the setting the side is cut flat (a tall first column)");
+                Assert.IsTrue(Edge(fittedColumns) < widest * 0.6, $"with it the head's side is round, not a flat cut ({Edge(fittedColumns)} of {widest} in the first column)");
+                Assert.IsTrue(fittedColumns.Count(c => c > 0) >= 22, "and the head still fills the width of the face");
+                Assert.IsTrue(fittedColumns.Where(c => c > 0).Reverse().First() < widest * 0.6, "on the right too");
+
+                // the turned heads have rounded edges as well, not a flat one
+                foreach (var name in new[] { "STFTL00", "STFTR00" })
+                {
+                    var turned = ColumnCounts(fitted, name).Where(c => c > 0).ToArray();
+                    Assert.IsTrue(turned.First() < turned.Max() * 0.75 && turned.Last() < turned.Max() * 0.75, $"{name}: round edges ({turned.First()}, {turned.Last()} of {turned.Max()})");
+                }
+
+                // a head that already fits (a tall one) is left exactly as it was
+                var tall = Ellipse(120, 200, 100, 200);
+                var plain = FaceFactory.Build(tall, spec, palette, FaceSettings.Default);
+                var same = FaceFactory.Build(tall, spec, palette, FaceSettings.Default with { FitWideHead = true });
+                Assert.IsTrue(plain.Zip(same, (a, b) => a.Data.SequenceEqual(b.Data)).All(x => x), "a head that fits is not changed by the setting");
+            }
+        }
+
         [TestMethod]
         public void AFaceSheetReadsBackIntoTheSameFacesAtAnyWholeNumberScale()
         {
