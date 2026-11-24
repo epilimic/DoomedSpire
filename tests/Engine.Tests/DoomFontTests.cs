@@ -58,6 +58,25 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void ALongNameIsCutWithDotsToFitOneLineAndAShortOneIsLeftAlone()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var font = DoomFont.Load(wad);
+                Assert.AreEqual("doom.wad", font.Truncate("doom.wad", 198));
+                var cut = font.Truncate("my very long custom megawad name here.wad", 198);
+                Assert.IsTrue(cut.EndsWith("...") && font.Measure(cut) <= 198 && cut.Length < 41, cut);
+                Assert.IsTrue(font.Measure(font.Truncate("my very long custom megawad name here.wad", 198).Replace("...", "") + "W") > 198 - 12 || cut.Length > 20, "it is cut where the line is full, not far short of it");
+                Assert.AreEqual("a b", font.Truncate("a\nb", 198));
+                var up = font.Arrow(true);
+                var down = font.Arrow(false);
+                Assert.IsTrue(up != null && down != null && up.Width == down.Width && up.Height == down.Height);
+                Assert.IsFalse(up.Data.SequenceEqual(down.Data), "down is up turned over");
+                Assert.IsTrue(Opaque(up) == Opaque(down) && Opaque(up) > 5);
+            }
+        }
+
+        [TestMethod]
         public void LongTextIsWrappedAtSpacesAndLongWordsAreBrokenToFit()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))

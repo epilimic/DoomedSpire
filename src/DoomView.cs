@@ -51,9 +51,14 @@ internal sealed class DoomView
 	private readonly Control pickerRoot;
 	private readonly Label pickerTitle;
 	private readonly VBoxContainer choiceList;
-	private readonly Label pickerFooter;
 	private readonly VBoxContainer titleList;
 	private readonly VBoxContainer footerList;
+	private IReadOnlyList<(string Text, WadFile? Wad)> pickerChoices = Array.Empty<(string, WadFile?)>();
+	private IReadOnlyList<WadFile> pickerSaved = Array.Empty<WadFile>();
+	private int pickerOffset;
+	private int pickerRows;
+	private Godot.Button? upArrow;
+	private Godot.Button? downArrow;
 	private readonly List<TextureRect> skullRects = new();
 	private int skullFrame;
 
@@ -137,14 +142,6 @@ internal sealed class DoomView
 		pickerBox.AddChild(choiceList);
 		footerList = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
 		pickerBox.AddChild(footerList);
-		pickerFooter = new Label
-		{
-			HorizontalAlignment = HorizontalAlignment.Center,
-			AutowrapMode = TextServer.AutowrapMode.Arbitrary,
-			CustomMinimumSize = new Vector2(PickerWidth, 0),
-			MouseFilter = Control.MouseFilterEnum.Ignore,
-		};
-		pickerBox.AddChild(pickerFooter);
 
 		// The skull cursor of DOOM's menus flips between its two pictures about four times a second (the engine's 8 tics at 35 a second).
 		var skullTimer = new Godot.Timer { WaitTime = 8.0 / 35.0, OneShot = false, Autostart = true };
@@ -301,97 +298,190 @@ internal sealed class DoomView
 
 	private void ShowPicker(IReadOnlyList<WadFile> saved, string? problem)
 	{
-		foreach (var list in new[] { choiceList, titleList, footerList })
-		{
-			foreach (var child in list.GetChildren())
-			{
-				child.QueueFree();
-			}
-		}
-		skullRects.Clear();
-
+		ClearPicker();
 		var font = DoomText.Font;
-		var choices = new List<(string Text, WadFile? Wad)> { (BuiltInWad.Label, null) };
-		foreach (var wad in saved)
-		{
-			choices.Add(($"{wad.Name}   ({wad.Size / 1048576.0:0.0} MB)", wad));
-		}
+		var choices = WadLibrary.PickerChoices(saved, BuiltInWad.Label);
+		pickerChoices = choices;
+		pickerSaved = saved;
+		pickerOffset = 0;
 
-		if (font != null && ModLog.Try("game", "making the game picker in DOOM's font", () => BuildDoomPicker(font, choices, saved, problem)))
+		if (font != null && ModLog.Try("game", "making the game picker in DOOM's font", () => BuildDoomPicker(font, problem)))
 		{
 			pickerTitle.Visible = false;
-			pickerFooter.Text = SavedGamesFolder; // a path keeps its capitals and small letters, which DOOM's font cannot show
-			pickerFooter.Visible = true;
 		}
 		else
 		{
 			// the plain game text: DOOM's font could not be made
-			skullRects.Clear();
-			foreach (var list in new[] { choiceList, titleList, footerList })
-			{
-				foreach (var child in list.GetChildren())
-				{
-					list.RemoveChild(child);
-					child.QueueFree();
-				}
-			}
+			ClearPicker();
 			foreach (var (text, wad) in choices)
 			{
 				AddChoice(text, wad, saved);
 			}
 			pickerTitle.Text = problem == null ? "Choose a game" : problem + "\n\nChoose a game";
 			pickerTitle.Visible = true;
-			pickerFooter.Text = "Save more DOOM games (.wad files) in:\n" + SavedGamesFolder;
-			pickerFooter.Visible = true;
 		}
 		message.Visible = false;
 		picture.Texture = null;
 		pickerRoot.Visible = true;
 	}
 
+	private void ClearPicker()
+	{
+		foreach (var list in new[] { choiceList, titleList, footerList })
+		{
+			foreach (var child in list.GetChildren())
+			{
+				list.RemoveChild(child);
+				child.QueueFree();
+			}
+		}
+		skullRects.Clear();
+		upArrow = null;
+		downArrow = null;
+	}
+
+	/// <summary>The cursor's width and a gap, before a game's name.</summary>
+	private const float SkullSlot = 84f;
+	private const float RowHeight = 68f;
+	private const float RowGap = 8f;
+	private const float ArrowSlot = 40f;
+
 	/// <summary>
 	/// The picker the way DOOM draws its own menus: the title in DOOM's font twice as big, each game a line of its font with the skull cursor coming up beside the
-	/// one the mouse is over. Throws if anything fails, so ShowPicker falls back to the plain controls.
+	/// one the mouse is over. A list longer than fits shows a window of it: the mouse wheel (or the arrows above and below, which show only when there is more that
+	/// way) moves it a game at a time. Throws if anything fails, so ShowPicker falls back to the plain controls.
 	/// </summary>
-	private void BuildDoomPicker(DoomFont font, IReadOnlyList<(string Text, WadFile? Wad)> choices, IReadOnlyList<WadFile> saved, string? problem)
+	private void BuildDoomPicker(DoomFont font, string? problem)
 	{
+		var used = 80f; // the empty margin round the list
 		if (problem != null)
 		{
-			titleList.AddChild(DoomText.Make(font, problem, PickerWidth, centred: true));
+			var text = DoomText.Make(font, problem, PickerWidth, centred: true);
+			titleList.AddChild(text);
 			titleList.AddChild(new Control { CustomMinimumSize = new Vector2(0, 20), MouseFilter = Control.MouseFilterEnum.Ignore });
+			used += text.CustomMinimumSize.Y + 20;
 		}
-		titleList.AddChild(DoomText.Make(font, "Choose a game", PickerWidth, centred: true, zoom: 2));
+		var title = DoomText.Make(font, "Choose a game", PickerWidth, centred: true, zoom: 2);
+		titleList.AddChild(title);
 		titleList.AddChild(new Control { CustomMinimumSize = new Vector2(0, 24), MouseFilter = Control.MouseFilterEnum.Ignore });
+		used += title.CustomMinimumSize.Y + 24;
 
-		const float SkullSlot = 84f; // the cursor's width and a gap, before the text
-		foreach (var (text, wad) in choices)
+		var height = screen.Size.Y > 100 ? screen.Size.Y : 768f;
+		var fits = Math.Max(3, (int)((height - used - 2 * ArrowSlot) / (RowHeight + RowGap)));
+		pickerRows = Math.Min(pickerChoices.Count, fits);
+		if (pickerChoices.Count > pickerRows)
 		{
-			var label = DoomText.Make(font, text, PickerWidth - SkullSlot);
-			var height = Math.Max(68f, label.CustomMinimumSize.Y + 24f);
-			label.Position = new Vector2(SkullSlot, (height - label.CustomMinimumSize.Y) / 2);
-
-			var button = new Godot.Button { CustomMinimumSize = new Vector2(PickerWidth, height), FocusMode = Control.FocusModeEnum.None };
-			foreach (var state in new[] { "normal", "hover", "pressed", "hover_pressed", "focus", "disabled" })
-			{
-				button.AddThemeStyleboxOverride(state, new StyleBoxEmpty());
-			}
-			button.AddChild(label);
-			var skull = DoomText.MakeSkull(font);
-			if (skull != null)
-			{
-				skull.Position = new Vector2(0, (height - skull.Size.Y) / 2);
-				skull.Visible = false;
-				button.AddChild(skull);
-				skullRects.Add(skull);
-				button.MouseEntered += () => { if (GodotObject.IsInstanceValid(skull)) skull.Visible = true; };
-				button.MouseExited += () => { if (GodotObject.IsInstanceValid(skull)) skull.Visible = false; };
-			}
-			button.Pressed += () => ModLog.Try("game", "starting the chosen game", () => BeginGame(wad, saved));
-			choiceList.AddChild(button);
+			upArrow = MakeArrow(font, up: true);
+			downArrow = MakeArrow(font, up: false);
+			titleList.AddChild(upArrow);
+			footerList.AddChild(downArrow);
 		}
+		RebuildRows(font);
+	}
 
-		footerList.AddChild(new Control { CustomMinimumSize = new Vector2(0, 16), MouseFilter = Control.MouseFilterEnum.Ignore });
-		footerList.AddChild(DoomText.Make(font, "Save more DOOM games (.wad files) in:", 960f, centred: true));
+	/// <summary>A flat button holding DOOM's arrow, which scrolls the list a game that way; it is shown (and takes the mouse) only while there is more in that direction.</summary>
+	private Godot.Button MakeArrow(DoomFont font, bool up)
+	{
+		var button = new Godot.Button { CustomMinimumSize = new Vector2(PickerWidth, ArrowSlot), FocusMode = Control.FocusModeEnum.None, MouseFilter = Control.MouseFilterEnum.Pass };
+		foreach (var state in new[] { "normal", "hover", "pressed", "hover_pressed", "focus", "disabled" })
+		{
+			button.AddThemeStyleboxOverride(state, new StyleBoxEmpty());
+		}
+		var arrow = font.Arrow(up);
+		if (arrow != null)
+		{
+			var rect = new TextureRect
+			{
+				Texture = DoomText.Texture(arrow),
+				ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+				StretchMode = TextureRect.StretchModeEnum.Scale,
+				TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
+				MouseFilter = Control.MouseFilterEnum.Ignore,
+				CustomMinimumSize = new Vector2(arrow.Width * DoomText.PixelWidth * 2, arrow.Height * DoomText.PixelHeight * 2),
+			};
+			rect.Size = rect.CustomMinimumSize;
+			rect.Position = new Vector2((PickerWidth - rect.Size.X) / 2, (ArrowSlot - rect.Size.Y) / 2);
+			button.AddChild(rect);
+		}
+		button.Pressed += () => ModLog.Try("game", "scrolling the game list", () => ScrollPicker(up ? -1 : 1));
+		return button;
+	}
+
+	/// <summary>Moves the window on the list by <paramref name="by"/> games, as far as the ends of the list allow.</summary>
+	private void ScrollPicker(int by)
+	{
+		var font = DoomText.Font;
+		if (font == null || pickerChoices.Count <= pickerRows)
+		{
+			return;
+		}
+		var offset = Math.Clamp(pickerOffset + by, 0, pickerChoices.Count - pickerRows);
+		if (offset != pickerOffset)
+		{
+			pickerOffset = offset;
+			RebuildRows(font);
+		}
+	}
+
+	/// <summary>Puts the games in the window (from <see cref="pickerOffset"/>) in the list and shows the arrows that have more to scroll to.</summary>
+	private void RebuildRows(DoomFont font)
+	{
+		foreach (var child in choiceList.GetChildren())
+		{
+			choiceList.RemoveChild(child);
+			child.QueueFree();
+		}
+		skullRects.Clear();
+		for (var i = pickerOffset; i < pickerOffset + pickerRows && i < pickerChoices.Count; i++)
+		{
+			choiceList.AddChild(MakeChoiceRow(font, pickerChoices[i].Text, pickerChoices[i].Wad));
+		}
+		SetArrow(upArrow, pickerOffset > 0);
+		SetArrow(downArrow, pickerOffset + pickerRows < pickerChoices.Count);
+	}
+
+	private static void SetArrow(Godot.Button? button, bool shown)
+	{
+		if (button == null)
+		{
+			return;
+		}
+		button.MouseFilter = shown ? Control.MouseFilterEnum.Pass : Control.MouseFilterEnum.Ignore;
+		foreach (var child in button.GetChildren())
+		{
+			if (child is CanvasItem item)
+			{
+				item.Visible = shown;
+			}
+		}
+	}
+
+	/// <summary>One game: a line of DOOM's font (cut with ... if it is too long) with the skull cursor beside it while the mouse is over it.</summary>
+	private Godot.Button MakeChoiceRow(DoomFont font, string text, WadFile? wad)
+	{
+		var label = DoomText.Make(font, font.Truncate(text, (int)((PickerWidth - SkullSlot) / DoomText.PixelWidth)), PickerWidth - SkullSlot);
+		label.Position = new Vector2(SkullSlot, (RowHeight - label.CustomMinimumSize.Y) / 2);
+
+		// Pass, not Stop: the mouse wheel over a game must reach the popup's root, which scrolls the list
+		var button = new Godot.Button { CustomMinimumSize = new Vector2(PickerWidth, RowHeight), FocusMode = Control.FocusModeEnum.None, MouseFilter = Control.MouseFilterEnum.Pass };
+		foreach (var state in new[] { "normal", "hover", "pressed", "hover_pressed", "focus", "disabled" })
+		{
+			button.AddThemeStyleboxOverride(state, new StyleBoxEmpty());
+		}
+		button.AddChild(label);
+		var skull = DoomText.MakeSkull(font);
+		if (skull != null)
+		{
+			skull.Position = new Vector2(0, (RowHeight - skull.Size.Y) / 2);
+			skull.Visible = false;
+			button.AddChild(skull);
+			skullRects.Add(skull);
+			button.MouseEntered += () => { if (GodotObject.IsInstanceValid(skull)) skull.Visible = true; };
+			button.MouseExited += () => { if (GodotObject.IsInstanceValid(skull)) skull.Visible = false; };
+		}
+		var saved = pickerSaved;
+		button.Pressed += () => ModLog.Try("game", "starting the chosen game", () => BeginGame(wad, saved));
+		return button;
 	}
 
 	/// <summary>Timer: the skull cursors take their other picture.</summary>
@@ -715,6 +805,18 @@ internal sealed class DoomView
 			var current = session;
 			if (current == null)
 			{
+				// the game picker: the mouse wheel scrolls a long list
+				if (pickerRoot.Visible && inputEvent is InputEventMouseButton { Pressed: true } wheel)
+				{
+					if (wheel.ButtonIndex == MouseButton.WheelUp)
+					{
+						ScrollPicker(-1);
+					}
+					else if (wheel.ButtonIndex == MouseButton.WheelDown)
+					{
+						ScrollPicker(1);
+					}
+				}
 				return;
 			}
 

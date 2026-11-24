@@ -67,5 +67,21 @@ namespace ManagedDoomTest
             foreach (var name in new[] { "zeta.wad", "Alpha.wad", "beta.WAD" }) Write(folder, name, "IWAD");
             Assert.IsTrue(new[] { "Alpha.wad", "beta.WAD", "zeta.wad" }.SequenceEqual(WadLibrary.FindGames(folder).Select(g => g.Name)));
         }
+
+        [TestMethod]
+        public void ThePickerListsFileNamesAndLeavesOutTheSharewareGameOnlyWhenDoomWadIsThere()
+        {
+            WadFile F(string name) => new WadFile(name, "/x/" + name, 12345678);
+            var plain = WadLibrary.PickerChoices(new[] { F("freedoom1.wad"), F("doom2.wad") }, "DOOM shareware");
+            Assert.IsTrue(new[] { "DOOM shareware", "freedoom1.wad", "doom2.wad" }.SequenceEqual(plain.Select(c => c.Text)), "the shareware game first, then the games by file name, with no size");
+            Assert.IsTrue(plain[0].Wad == null && plain[1].Wad != null);
+            foreach (var name in new[] { "doom.wad", "DOOM.WAD", "Doom.wad" })
+            {
+                var full = WadLibrary.PickerChoices(new[] { F("freedoom1.wad"), F(name) }, "DOOM shareware");
+                Assert.IsTrue(new[] { "freedoom1.wad", name }.SequenceEqual(full.Select(c => c.Text)), "with " + name + " the shareware game is not listed");
+            }
+            Assert.IsTrue(WadLibrary.PickerChoices(new[] { F("doom2.wad"), F("doomu.wad") }, "DOOM shareware").Any(c => c.Wad == null), "other games do not hide it");
+            Assert.AreEqual(1, WadLibrary.PickerChoices(new WadFile[0], "DOOM shareware").Count);
+        }
     }
 }

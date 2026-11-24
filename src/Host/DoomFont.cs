@@ -79,6 +79,39 @@ internal sealed class DoomFont
 	public int Measure(string text) => text.Sum(AdvanceOf);
 
 	/// <summary>
+	/// The text on one line no wider than <paramref name="maxWidth"/> font pixels: as it is if it fits, otherwise cut with <c>...</c> at the end. A new-line becomes a space.
+	/// </summary>
+	public string Truncate(string text, int maxWidth)
+	{
+		text = text.Replace("\r", "").Replace('\n', ' ');
+		if (Measure(text) <= maxWidth)
+		{
+			return text;
+		}
+		var cut = text.Length;
+		while (cut > 0 && Measure(text.Substring(0, cut).TrimEnd() + "...") > maxWidth)
+		{
+			cut--;
+		}
+		return text.Substring(0, cut).TrimEnd() + "...";
+	}
+
+	/// <summary>An arrow in the font's own colours, pointing up or down: the font's <c>^</c>, turned over for down. Null if the game's font has no <c>^</c>.</summary>
+	public Rgba? Arrow(bool up)
+	{
+		if (!glyphs.TryGetValue('^', out var g))
+		{
+			return null;
+		}
+		var pixels = new int[g.Width * g.Height];
+		for (var y = 0; y < g.Height; y++)
+		{
+			Array.Copy(g.Pixels, (up ? y : g.Height - 1 - y) * g.Width, pixels, y * g.Width, g.Width);
+		}
+		return ToRgba(g.Width, g.Height, pixels);
+	}
+
+	/// <summary>
 	/// Cuts <paramref name="text"/> into lines no wider than <paramref name="maxWidth"/> font pixels: at spaces, and inside a word that is wider than a line by itself
 	/// (a path, say). A new-line in the text starts a line. A line that is wider than the width never happens except for a single character wider than it.
 	/// </summary>

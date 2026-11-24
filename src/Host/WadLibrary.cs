@@ -16,6 +16,24 @@ internal sealed record WadFile(string Name, string Path, long Size);
 /// </summary>
 internal static class WadLibrary
 {
+	/// <summary>True for the full DOOM, a file called <c>doom.wad</c> (any case).</summary>
+	public static bool IsFullDoom(WadFile wad) => string.Equals(wad.Name, "doom.wad", StringComparison.OrdinalIgnoreCase);
+
+	/// <summary>
+	/// What the game picker lists, in order: the built-in shareware game (a null file, shown as <paramref name="builtInName"/>) and then each saved game by its file name.
+	/// The shareware game is left out when the full DOOM is among the saved games.
+	/// </summary>
+	public static IReadOnlyList<(string Text, WadFile? Wad)> PickerChoices(IReadOnlyList<WadFile> saved, string builtInName)
+	{
+		var choices = new List<(string, WadFile?)>();
+		if (!saved.Any(IsFullDoom))
+		{
+			choices.Add((builtInName, null));
+		}
+		choices.AddRange(saved.Select(w => (w.Name, (WadFile?)w)));
+		return choices;
+	}
+
 	/// <summary>The games in <paramref name="folder"/> (not its subfolders), in alphabetical order. A folder that does not exist has none.</summary>
 	/// <param name="report">Told about files that are skipped and why (not a game, unreadable).</param>
 	public static IReadOnlyList<WadFile> FindGames(string folder, Action<string>? report = null)

@@ -17,7 +17,7 @@ internal static class BuiltInWad
 	private const string FileName = "doom1-shareware-1.9.wad";
 
 	/// <summary>The name shown in the picker.</summary>
-	public const string Label = "DOOM shareware (built in)";
+	public const string Label = "DOOM shareware";
 
 	/// <summary>The folder the mod keeps its files in, in the game's user data folder.</summary>
 	public static string DataFolder => ProjectSettings.GlobalizePath("user://DoomedSpire");
