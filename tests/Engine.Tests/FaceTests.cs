@@ -524,7 +524,7 @@ namespace ManagedDoomTest
                 var report = FaceFactory.CropReport(Ellipse(200, 120, 200, 100), new PatchSpec(p.Width, p.Height, p.LeftOffset, p.TopOffset), FaceSettings.Default);
                 Assert.IsTrue(report.Contains("portrait 200x120"), report);
                 Assert.IsTrue(report.Contains("x 0..199"), report);
-                Assert.IsFalse(report.Contains("0 at the sides"), "a wide head has drawn pixels outside the face's window: " + report);
+                Assert.IsFalse(report.Contains("outside the face: 0 at the sides"), "a wide head has drawn pixels outside the face's window: " + report);
             }
         }
 
