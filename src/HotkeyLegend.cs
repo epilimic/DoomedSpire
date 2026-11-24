@@ -19,8 +19,8 @@ internal static class HotkeyLegend
 		("Esc", "DOOM Menu"),
 		("WASD", "Move"),
 		("Mouse", "Turn"),
-		("L-Click", "Fire"),
-		("R-Click", "Use"),
+		("M1", "Fire"),
+		("M2", "Use"),
 		("1 - 7", "Weapons"),
 		("Tab", "Map"),
 	};
