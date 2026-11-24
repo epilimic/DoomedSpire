@@ -35,6 +35,7 @@ internal static class DoomPopup
 
 		var popup = BuildPopup(out var closeButton, out var view, out var layer, out var refreshLayout);
 		var button = BuildButton();
+		var placeLegend = HotkeyLegend.Build(map, popup); // the list of keys, over the map screen's legend while the popup is open
 
 		// The monitor and the game are placed when the popup opens and again whenever the screen's size changes. Guarded: a failure is logged in a shrinking way.
 		Action placeMonitor = () =>
@@ -42,6 +43,7 @@ internal static class DoomPopup
 			try
 			{
 				refreshLayout();
+				placeLegend?.Invoke();
 			}
 			catch (Exception e)
 			{
@@ -49,6 +51,9 @@ internal static class DoomPopup
 			}
 		};
 		popup.Resized += placeMonitor;
+
+		// The backtick key only becomes the toggle once DOOM has been opened in this run: until then it is the dev console's key everywhere, as in the game.
+		var openedOnce = false;
 
 		void SetOpen(bool open)
 		{
@@ -60,6 +65,7 @@ internal static class DoomPopup
 			ModLog.Info("map", open ? "popup opened" : "popup closed");
 			if (open)
 			{
+				openedOnce = true;
 				placeMonitor(); // in place before the first frame is drawn
 				view.Start();
 			}
@@ -69,8 +75,9 @@ internal static class DoomPopup
 			}
 		}
 
-		// The backtick key toggles between the map screen and DOOM (see ToggleHotkey). It applies when the popup is open (to close it, for the states where no game is
-		// running to read the key itself), or when the map screen is showing with nothing over it, no dev console and no text being typed.
+		// The backtick key toggles between the map screen and DOOM (see ToggleHotkey), once DOOM has been opened. It applies when the popup is open (to close it, for the
+		// states where no game is running to read the key itself), or when the map screen is showing with nothing over it, no dev console and no text being typed.
+		// Everywhere else (combat, events, the menus) it stays the console's key.
 		Func<bool> hotkeyApplies = () =>
 		{
 			if (!GodotObject.IsInstanceValid(popup) || !GodotObject.IsInstanceValid(map))
@@ -80,6 +87,10 @@ internal static class DoomPopup
 			if (popup.Visible)
 			{
 				return true;
+			}
+			if (!openedOnce)
+			{
+				return false; // DOOM has not been opened yet: the key is still the console's
 			}
 			if (!map.IsOpen || !map.IsVisibleInTree() || MegaCrit.Sts2.Core.Nodes.Debug.NDevConsole.IsConsoleVisible || (MegaCrit.Sts2.Core.Nodes.Screens.Capstones.NCapstoneContainer.Instance?.InUse ?? false))
 			{
