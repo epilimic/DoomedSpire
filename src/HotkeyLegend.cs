@@ -15,13 +15,12 @@ internal static class HotkeyLegend
 	/// <summary>The keys, as the mod binds them (the engine's defaults, Config.cs, with the backtick key as the toggle). The toggle key is shown as ~, which people know better.</summary>
 	private static readonly (string Key, string Action)[] Rows =
 	{
-		("~", "Map / DOOM"),
-		("Esc", "DOOM menu"),
+		("~", "Toggle Map / DOOM"),
+		("Esc", "DOOM Menu"),
 		("WASD", "Move"),
 		("Mouse", "Turn"),
-		("L-click / Ctrl", "Fire"),
-		("R-click / Space", "Use"),
-		("Shift", "Toggle walk"), // the player runs by default (game_alwaysrun in Config.cs), so Shift walks
+		("L-Click / Ctrl", "Fire"),
+		("R-Click / Space", "Use"),
 		("1 - 7", "Weapons"),
 		("Tab", "Map"),
 	};
@@ -80,8 +79,8 @@ internal static class HotkeyLegend
 			grid.OffsetRight = -34f;
 			foreach (var (key, action) in Rows)
 			{
-				grid.AddChild(MakeLabel(key, rowInk, rowFont, 18, 136f));
-				grid.AddChild(MakeLabel(action, rowInk, rowFont, 18, 0f));
+				grid.AddChild(MakeLabel(key, rowInk, rowFont, 18, 136f, wrap: false));
+				grid.AddChild(MakeLabel(action, rowInk, rowFont, 18, 110f, wrap: true)); // a long action ("Toggle Map / DOOM") goes on to a second line instead of out of the panel
 			}
 			panel.AddChild(grid);
 
@@ -114,9 +113,13 @@ internal static class HotkeyLegend
 		}
 	}
 
-	private static Label MakeLabel(string text, Color ink, Font? font, int size, float minWidth)
+	private static Label MakeLabel(string text, Color ink, Font? font, int size, float minWidth, bool wrap)
 	{
 		var label = new Label { Text = text, MouseFilter = Control.MouseFilterEnum.Ignore, CustomMinimumSize = new Vector2(minWidth, 0f) };
+		if (wrap)
+		{
+			label.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+		}
 		label.AddThemeColorOverride("font_color", ink);
 		label.AddThemeFontSizeOverride("font_size", size);
 		if (font != null)
