@@ -45,7 +45,6 @@ internal sealed class DoomView
 	private const float PickerWidth = 720f;
 
 	private readonly Control screen;
-	private readonly Godot.Button closeButton;
 	private readonly TextureRect picture;
 	private readonly Label message;
 	private readonly Control pickerRoot;
@@ -85,17 +84,22 @@ internal sealed class DoomView
 	private AudioOutput? audioOutput;
 	private int failures;
 
+	/// <summary>
+	/// True while no game is running (the game picker, a message, or a tool open on top of DOOM): then a click on the map screen's DOOM button may close the popup. While a
+	/// game runs every click is DOOM's (shooting and using), so the button is not taken then and the backtick key is the way out.
+	/// </summary>
+	public bool CanCloseWithButton { get; private set; } = true;
+
 	/// <summary>Called when DOOM itself wants to end (the player quit from DOOM's menu). The popup sets this to close itself.</summary>
 	public Action? RequestClose { get; set; }
 
 	/// <summary>
 	/// Adds the picture and the message label to <paramref name="screen"/>, the 4:3 black area of the popup. <paramref name="mouseArea"/> is the full-screen
-	/// control that receives every mouse click; <paramref name="closeButton"/> is hidden while a game runs, so a click meant for DOOM cannot close the popup.
+	/// control that receives every mouse click.
 	/// </summary>
-	public DoomView(Control screen, Control mouseArea, Godot.Button closeButton)
+	public DoomView(Control screen, Control mouseArea)
 	{
 		this.screen = screen;
-		this.closeButton = closeButton;
 		ourLayer = mouseArea.GetParent() as CanvasLayer;
 
 		// DOOM's pixels are not square: its 640x400 picture is meant to be shown as 4:3, so the picture is stretched to fill the whole area.
@@ -578,7 +582,7 @@ internal sealed class DoomView
 		CaptureMouse();
 		screen.GrabFocus();
 		KeyLock.Active = true;
-		closeButton.Visible = false;
+		CanCloseWithButton = false;
 
 		try
 		{
@@ -631,10 +635,7 @@ internal sealed class DoomView
 			audioOutput = null;
 			ReleaseMouse();
 			KeyLock.Active = false;
-			if (GodotObject.IsInstanceValid(closeButton))
-			{
-				closeButton.Visible = true;
-			}
+			CanCloseWithButton = true;
 			if (GodotObject.IsInstanceValid(screen) && screen.HasFocus())
 			{
 				screen.ReleaseFocus();
@@ -706,7 +707,7 @@ internal sealed class DoomView
 					yielding = true;
 					current.ReleaseAllInput();
 					KeyLock.Active = false;
-					closeButton.Visible = true; // always a way out, whatever the detection says
+					CanCloseWithButton = true; // always a way out, whatever the detection says
 					if (Input.MouseMode == Input.MouseModeEnum.Captured)
 					{
 						Input.MouseMode = mouseModeBefore == Input.MouseModeEnum.Captured ? Input.MouseModeEnum.Visible : mouseModeBefore;
@@ -724,7 +725,7 @@ internal sealed class DoomView
 			{
 				yielding = false;
 				KeyLock.Active = true;
-				closeButton.Visible = false;
+				CanCloseWithButton = false;
 				toggleKeyWasDown = ToggleKeyDown();
 				lastTimestamp = Stopwatch.GetTimestamp();
 				ModLog.Info("game", "the tool closed; the game carries on");
@@ -738,7 +739,7 @@ internal sealed class DoomView
 			}
 
 			// The backtick key leaves DOOM for the map screen, when it goes down. Read from the keyboard state itself every frame rather than from key events, so
-			// the way out never depends on keyboard focus or event delivery: the Close button is hidden while a game runs and every other key is DOOM's.
+			// the way out never depends on keyboard focus or event delivery: every other key is DOOM's.
 			var toggleDown = ToggleKeyDown();
 			if (toggleDown && !toggleKeyWasDown)
 			{
@@ -789,7 +790,7 @@ internal sealed class DoomView
 			{
 				ModLog.Warn("game", $"{failures} frames failed; stopping DOOM so it cannot slow the game down");
 				Shutdown();
-				Say("DOOM stopped after repeated errors. Close this and open it again to retry; see the log for details.");
+				Say("DOOM stopped after repeated errors. Click the DOOM button to close this, then open it again to retry; see the log for details.");
 			}
 		}
 	}

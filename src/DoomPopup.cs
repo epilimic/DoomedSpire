@@ -33,7 +33,7 @@ internal static class DoomPopup
 			return;
 		}
 
-		var popup = BuildPopup(out var closeButton, out var view, out var layer, out var refreshLayout);
+		var popup = BuildPopup(out var view, out var layer, out var refreshLayout);
 		var button = BuildButton();
 		var placeLegend = HotkeyLegend.Build(map, popup); // the list of keys, over the map screen's legend while the popup is open
 
@@ -104,7 +104,17 @@ internal static class DoomPopup
 
 		view.RequestClose = () => SetOpen(false);
 		button.Pressed += () => ModLog.Try("map", "opening the popup", () => SetOpen(true));
-		closeButton.Pressed += () => ModLog.Try("map", "closing the popup", () => SetOpen(false));
+		// The map screen's DOOM button is still visible under the popup, so it is the way to close it too: a click on it, while no game is running (the picker, a message),
+		// closes the popup. While a game runs every click is DOOM's, and the backtick key closes it.
+		popup.GuiInput += inputEvent => ModLog.Try("map", "clicking the DOOM button to close the popup", () =>
+		{
+			if (inputEvent is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click && view.CanCloseWithButton && GodotObject.IsInstanceValid(button)
+				&& button.GetGlobalRect().HasPoint(popup.GetGlobalTransform() * click.Position))
+			{
+				SetOpen(false);
+				popup.AcceptEvent();
+			}
+		});
 		// The map screen's own Closed signal (NMapScreen.cs, emitted at the start of Close) also closes the popup,
 		// so the player is never left inside it while the game moves on.
 		map.Closed += () => ModLog.Try("map", "closing the popup with the map", () => SetOpen(false));
@@ -233,11 +243,12 @@ internal static class DoomPopup
 	/// <summary>
 	/// A full-screen dimmed backdrop, the picture of an old monitor (assets/crt.png) and the game on its glass, all on a high canvas layer. Nothing is in a
 	/// container: the monitor and the game are placed by absolute position and size (<see cref="CrtLayout"/>), so nothing can reflow or change size when the
-	/// text, the Close button or the game picker changes: the picture of the game stays exactly where it is.
-	/// The full-screen root is the only thing that takes mouse events (everything inside it ignores the mouse, except the Close button, which DoomView
-	/// hides while a game runs), so a click anywhere on the screen lands on the root and nothing else in the game can be clicked.
+	/// text or the game picker changes: the picture of the game stays exactly where it is.
+	/// The full-screen root is the only thing that takes mouse events (everything inside it ignores the mouse, except the picker's own buttons), so a click anywhere on
+	/// the screen lands on the root and nothing else in the game can be clicked; the map screen's DOOM button, which shows under the popup, is closed with by a click
+	/// that the root sees land on it (see AttachTo).
 	/// </summary>
-	private static Control BuildPopup(out Button closeButton, out DoomView view, out CanvasLayer layer, out Action refreshLayout)
+	private static Control BuildPopup(out DoomView view, out CanvasLayer layer, out Action refreshLayout)
 	{
 		layer = new CanvasLayer { Name = LayerName, Layer = PopupLayer };
 
@@ -268,25 +279,7 @@ internal static class DoomPopup
 		var screen = new ColorRect { Name = "DoomedSpireGame", Color = Colors.Black, MouseFilter = Control.MouseFilterEnum.Ignore };
 		root.AddChild(screen);
 
-		// Top right of the screen, out of the way. Only shown while no game runs (the error and picker states), so a click meant for DOOM cannot close it.
-		closeButton = new Button
-		{
-			Text = "Close",
-			FocusMode = Control.FocusModeEnum.None,
-			CustomMinimumSize = new Vector2(140, 44),
-			AnchorLeft = 1f,
-			AnchorTop = 0f,
-			AnchorRight = 1f,
-			AnchorBottom = 0f,
-			OffsetLeft = -176f,
-			OffsetTop = 24f,
-			OffsetRight = -36f,
-			OffsetBottom = 68f,
-			GrowHorizontal = Control.GrowDirection.Begin,
-		};
-		root.AddChild(closeButton);
-
-		view = new DoomView(screen, root, closeButton);
+		view = new DoomView(screen, root);
 
 		refreshLayout = () =>
 		{
