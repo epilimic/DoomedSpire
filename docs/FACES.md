@@ -33,20 +33,17 @@ A last row has the two faces that do not depend on health: god mode and dead (he
 
 Every health row has columns 1 to 8, so the same expression exists at all five levels.
 
-## Painting your own
+## The painted faces
 
-Everything below is in the mod's data folder: `~/.local/share/SlayTheSpire2/DoomedSpire/data/`. The pictures are made from the game's own art on your machine and are not in the repo; keep them out of it.
+Every playable character has a painted sheet built into the mod: `assets/<character>-faces.png` (`defect`, `fool`, `ironclad`, `necrobinder`, `regent`, `silent`). It holds all 42 faces on a transparent background, one picture pixel per DOOM pixel (280 x 218), laid out as in the tables above: 5 rows of 8, then a row with the two last faces. The mod reads the one for the character you are playing and uses it instead of Doomguy's faces. A character with no sheet (a modded one, say) gets faces made from its portrait in the top bar, with paleness, redness and blood marks that grow with each health row.
 
-1. Start a new game with DOOM (quit from DOOM's menu and open it again if one is paused). The mod writes `<character>-faces-to-paint.png` for **every playable character** (`ironclad`, `silent`, `regent`, `necrobinder`, `defect`, `fool`), not only the one in your run, for example `ironclad-faces-to-paint.png`.
-   It holds all 42 faces on a transparent background, one picture pixel per DOOM pixel (about 280 x 218), laid out as in the tables above: 5 rows of 8, then a row with the two last faces. **Every face is the same colour and none has any blood**: nothing changes with the health row or the expression (no paleness, redness or tints, not even for ouch, grin, god or dead). Only the head's position and angle differ, as in Doomguy's own faces: the turn left column has the head turned (the features slid to the right, the far side squeezed, the outline unchanged) and the turn right column is that same picture mirrored, ouch sits one pixel higher, and the two glance columns are the whole head moved one pixel to the left and to the right (the eyes do not move on their own, so paint them if you want them to glance; the two glance pictures are made one pixel wider each side than the game's own, so a moved head is not cut off, and a painted sheet may use that extra pixel). It is rewritten at every new game, so do not paint on this file.
-2. Paint on a copy, in an editor that can zoom right in (the faces are about 24 pixels wide) and that does not smooth or blur: pencil tools only. Keep the sheet's size.
-3. To try it out: save it in the same folder as `<character>-faces-painted.png` (`ironclad-faces-painted.png`). At the next new game the mod uses your sheet instead of the generated faces and says so in the log. Remove the file to go back.
-4. To ship it: put the sheet in the repo as `assets/<character>-faces.png` (for example `assets/fool-faces.png`) and build. It is baked into the dll and used for that character. A `<character>-faces-painted.png` in the data folder still wins over it (so delete that file once the built-in sheet is the one you want), and a character with neither gets the generated faces.
+To change a sheet, edit the file in `assets/` in an editor that can zoom right in (the faces are about 24 pixels wide) and that does not smooth or blur (pencil tools only), keep its size, and build. The mod no longer writes sheets to paint on or a preview of the faces in use.
 
 Things to know:
 - Any colour works; each pixel is matched to the nearest of DOOM's 256 colours, so very subtle shades may merge.
 - A fully transparent pixel stays transparent (the status bar shows through). Mostly transparent ones count as transparent too (half or less opaque).
-- You can paint anywhere inside a face's own box, but pixels outside the box a face has in the game are ignored. The turning faces' boxes are a few pixels wider than the straight ones.
+- You can paint anywhere inside a face's own box, but pixels outside the box a face has in the game are ignored. The turning faces' boxes are a few pixels wider than the straight ones, and the two glance faces (columns 2 and 3) are made one pixel wider on each side than the game's own, so a head moved a pixel is not cut off.
+- The glance columns are the whole head moved one pixel to the left and to the right. The eyes do not move on their own, so paint them if you want them to glance. Sliding only what is inside the head instead looked like two faces, one still and one moving.
+- A sheet in the data folder called `<character>-faces-painted.png` (`~/.local/share/SlayTheSpire2/DoomedSpire/data/`) is used instead of the built-in one, for trying a sheet before building it. Remove it to go back.
 - You can save the sheet enlarged by a whole number (for example 6 times, each dot as a 6 x 6 block); the mod reads the middle of every block.
-- A sheet of any other size is refused, and the log says what size it must be; the generated faces are used then.
-- There is one painted sheet per character. `face-sheet.png` (the big preview on a dark background) shows what is actually in use, painted or generated; it is only for looking at.
+- A sheet of any other size is refused, and the log says what size it must be; the faces made from the portrait are used then.

@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Linq;
 using DoomedSpire.Host;
 using Godot;
 using ManagedDoom;
@@ -11,18 +10,14 @@ namespace DoomedSpire;
 /// Makes the status-bar faces from the face of the character the player is playing. Reads the character's picture from the game (its own art, from the
 /// player's installed game, read at run time and never stored in the mod), has FaceFactory turn it into DOOM's 42 faces, and writes them as a small add-on
 /// WAD that the engine loads on top of the game, so its faces replace Doomguy's. If anything is missing or goes wrong the game just starts with Doomguy.
-/// The numbers that decide how it looks are in FaceTuning (live-tunable with VfxSpawner).
+/// Every playable character has its own painted faces built into the mod (assets/&lt;character&gt;-faces.png); the faces are made from the character's picture only
+/// for a character that has none (a modded one, say).
 /// </summary>
 internal static class PlayerFace
 {
 	/// <summary>Builds the add-on WAD for the current character into <paramref name="folder"/> and returns its path, or null (log says why) to keep Doomguy.</summary>
 	public static string? TryBuild(string iwadPath, string folder)
 	{
-		if (!FaceTuning.UseCharacterFace)
-		{
-			return null;
-		}
-
 		try
 		{
 			var character = ActiveRun.LocalCharacter();
@@ -51,16 +46,10 @@ internal static class PlayerFace
 				var original = Patch.FromWad(wad, name);
 				return new PatchSpec(original.Width, original.Height, original.LeftOffset, original.TopOffset);
 			};
-			var settings = FaceSettings.FromTuning();
-			var lumps = FaceFactory.Build(picture, spec, palette, settings);
+			var lumps = FaceFactory.Build(picture, spec, palette, FaceSettings.Default);
 
 			Directory.CreateDirectory(folder);
 			var id = character.Id.Entry.ToLowerInvariant();
-
-			// A sheet to paint on for every playable character (so all of them can be painted without playing each), made again at every new game, so it is never the
-			// file that holds the player's work (that is the "painted" one below). See WriteSheetsToPaint.
-			var toPaint = Path.Combine(folder, id + "-faces-to-paint.png");
-			WriteSheetsToPaint(folder, spec, palette, settings);
 
 			// The faces painted for this character, if there are any, are used instead of the generated ones: first the player's own file in the data folder (to try
 			// out a sheet before it is built in), then the one built into the mod (assets/<character>-faces.png).
@@ -95,66 +84,16 @@ internal static class PlayerFace
 				}
 			}
 
-			var preview = Path.Combine(folder, "face-sheet.png");
-			WriteSheet(FaceFactory.Sheet(lumps, palette, 6), preview);
 			var path = Path.Combine(folder, "face.wad");
 			File.WriteAllBytes(path, PwadWriter.Build(lumps));
 
-			ModLog.Info("face", $"{how ?? "made the faces of"} {character.Id.Entry} ({lumps.Count} faces, from a {picture.Width}x{picture.Height} picture, source {FaceTuning.Source}); " +
-				$"a preview is in {preview}; to paint your own, edit {toPaint} and save it as {painted}");
+			ModLog.Info("face", $"{how ?? "made the faces of"} {character.Id.Entry} ({lumps.Count} faces, from a {picture.Width}x{picture.Height} picture)");
 			return path;
 		}
 		catch (Exception e)
 		{
 			ModLog.Fail("face", "making the character's face", e);
 			return null;
-		}
-	}
-
-	/// <summary>
-	/// Writes <c>&lt;character&gt;-faces-to-paint.png</c> for every playable character, not only the one in this run. A character that cannot be made is skipped (the log says why).
-	/// The sheet is every face on a transparent background, 1:1, the same colour in every one and without blood (<see cref="FaceSettings.Neutral"/>).
-	/// </summary>
-	private static void WriteSheetsToPaint(string folder, Func<string, PatchSpec> spec, DoomPalette palette, FaceSettings settings)
-	{
-		// The sheets only change with the game, this build of the mod and the face numbers, so when none did and every sheet is there they are left alone.
-		string? gameVersion = null;
-		ModLog.Try("face", "reading the game's version", () => gameVersion = MegaCrit.Sts2.Core.Debug.ReleaseInfoManager.Instance.ReleaseInfo?.Version);
-		var keyPath = Path.Combine(folder, "to-paint.key");
-		var key = string.IsNullOrEmpty(gameVersion) ? null : string.Join("|", gameVersion, typeof(PlayerFace).Assembly.ManifestModule.ModuleVersionId, FaceTuning.Source, settings);
-		var playable = MegaCrit.Sts2.Core.Models.ModelDb.AllCharacters.Where(c => c.IsPlayable).ToList();
-		string SheetPath(MegaCrit.Sts2.Core.Models.CharacterModel c) => Path.Combine(folder, c.Id.Entry.ToLowerInvariant() + "-faces-to-paint.png");
-		if (key != null && File.Exists(keyPath) && File.ReadAllText(keyPath) == key && playable.All(c => File.Exists(SheetPath(c))))
-		{
-			return;
-		}
-		if (File.Exists(keyPath))
-		{
-			File.Delete(keyPath);
-		}
-		var allWritten = true;
-		foreach (var character in playable)
-		{
-			try
-			{
-				var picture = ReadPicture(character);
-				if (picture == null)
-				{
-					allWritten = false;
-					continue;
-				}
-				var faces = FaceFactory.Build(picture, spec, palette, settings with { Blood = 0f, Neutral = true });
-				WriteSheet(FaceFactory.Sheet(faces, palette, 1, transparentBackground: true), SheetPath(character));
-			}
-			catch (Exception e)
-			{
-				allWritten = false;
-				ModLog.Fail("face", "writing the sheet to paint for " + character.Id.Entry, e);
-			}
-		}
-		if (allWritten && key != null)
-		{
-			File.WriteAllText(keyPath, key);
 		}
 	}
 
@@ -176,18 +115,13 @@ internal static class PlayerFace
 		return ToPixels(image) ?? throw new InvalidDataException(id + "-faces.png is empty");
 	}
 
-	/// <summary>The character's picture, as the game has it (the source is FaceTuning.Source), as plain pixels. Null if it cannot be read.</summary>
+	/// <summary>The character's picture (the small portrait in the game's top bar), as plain pixels. Null if it cannot be read.</summary>
 	private static Rgba? ReadPicture(MegaCrit.Sts2.Core.Models.CharacterModel character)
 	{
-		Texture2D? texture = FaceTuning.Source switch
-		{
-			1 => character.CharacterSelectIcon,
-			2 => character.MapMarker,
-			_ => character.IconTexture,
-		};
+		Texture2D? texture = character.IconTexture;
 		if (texture == null)
 		{
-			ModLog.OnceInfo("face", "no-texture", $"the character {character.Id.Entry} has no picture for source {FaceTuning.Source}, so Doomguy's own face is used");
+			ModLog.OnceInfo("face", "no-texture", $"the character {character.Id.Entry} has no portrait, so Doomguy's own face is used");
 			return null;
 		}
 
@@ -218,18 +152,5 @@ internal static class PlayerFace
 	private static Rgba LoadPicture(string path)
 	{
 		return ToPixels(Image.LoadFromFile(path)) ?? throw new InvalidDataException($"{Path.GetFileName(path)} could not be read as a picture");
-	}
-
-	/// <summary>Saves a face sheet as a PNG. Failing to write it is not a problem for the game.</summary>
-	private static void WriteSheet(Rgba sheet, string path)
-	{
-		try
-		{
-			Image.CreateFromData(sheet.Width, sheet.Height, false, Image.Format.Rgba8, sheet.Data).SavePng(path);
-		}
-		catch (Exception e)
-		{
-			ModLog.Fail("face", "saving a face sheet", e);
-		}
 	}
 }

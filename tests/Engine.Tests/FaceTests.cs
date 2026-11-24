@@ -398,23 +398,6 @@ namespace ManagedDoomTest
             Assert.AreEqual(0, changedOutside, "nothing else on the screen changes");
         }
 
-        [TestMethod]
-        public void TheTunerCanFindTheFaceNumbers()
-        {
-            var fields = typeof(FaceTuning).GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly);
-            Assert.AreEqual(9, fields.Length);
-            foreach (var field in fields)
-            {
-                Assert.IsFalse(field.IsInitOnly || field.IsLiteral, field.Name);
-                Assert.IsTrue(field.FieldType == typeof(float) || field.FieldType == typeof(int) || field.FieldType == typeof(bool), field.Name);
-                var attribute = field.GetCustomAttributes(false).FirstOrDefault(a => a.GetType().Name == "TunableAttribute");
-                Assert.IsTrue(attribute != null, field.Name + " needs the Tunable attribute");
-                Assert.AreEqual("Doomed Spire face", attribute.GetType().GetProperty("Group").GetValue(attribute) as string);
-                Assert.IsFalse(string.IsNullOrEmpty(attribute.GetType().GetProperty("Tip").GetValue(attribute) as string), field.Name + " has a tip");
-            }
-            Assert.AreEqual(FaceSettings.Default, FaceSettings.FromTuning(), "the defaults are the plain settings");
-        }
-
         // --- the blood knob, and painting on a sheet (piece: faces, second round) ---
 
         /// <summary>The colour of each pixel of a face, null where transparent.</summary>

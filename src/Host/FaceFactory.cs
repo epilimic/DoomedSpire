@@ -6,52 +6,12 @@ using ManagedDoom;
 namespace DoomedSpire.Host;
 
 /// <summary>
-/// How the character's face is made. <b>Live-tunable</b> with the VfxSpawner mod (F9, "Show tuner", group "Doomed Spire face"). The faces are made when a new
-/// game starts, so a change shows the next time one does (quit from DOOM's menu, then open DOOM again). The VfxSpawner tuner's "Copy values" gives the numbers
-/// to bake in as defaults.
-/// </summary>
-internal static class FaceTuning
-{
-	private const string Group = "Doomed Spire face";
-
-	[Tunable(Group, 1f, "On: the status bar shows the face of the character you are playing. Off: Doomguy's own face. Takes effect when a new game starts.")]
-	public static bool UseCharacterFace = true;
-
-	[Tunable(Group, 1f, "Which picture of the character to take the face from: 0 = the small portrait in the game's top bar, 1 = the character-select picture, 2 = the map marker.", Min = 0, Max = 2)]
-	public static int Source = 0;
-
-	[Tunable(Group, 0.01f, "Where the face starts in that picture, left edge, as a fraction of its width (0 = the very left).", Min = 0, Max = 0.9)]
-	public static float CropLeft = 0f;
-
-	[Tunable(Group, 0.01f, "Where the face starts in that picture, top edge, as a fraction of its height (0 = the very top).", Min = 0, Max = 0.9)]
-	public static float CropTop = 0f;
-
-	[Tunable(Group, 0.01f, "How much of the picture's width to use, as a fraction (1 = all of it). Smaller zooms in on the face.", Min = 0.1, Max = 1)]
-	public static float CropWidth = 1f;
-
-	[Tunable(Group, 0.01f, "How much of the picture's height to use, as a fraction (1 = all of it). Smaller zooms in on the face.", Min = 0.1, Max = 1)]
-	public static float CropHeight = 1f;
-
-	[Tunable(Group, 0.05f, "How strongly the lower health levels look hurt: paler, redder, with blood. 0 = no change at all, 1 = normal, 2 = very bloody.", Min = 0, Max = 2)]
-	public static float Damage = 1f;
-
-	[Tunable(Group, 0.01f, "How bright the face is. 1 = as the picture.", Min = 0.5, Max = 1.5)]
-	public static float Brightness = 1f;
-
-	[Tunable(Group, 0.05f, "How many blood marks the hurt faces get. 0 = none, 1 = normal, 2 = twice as many. (The sheet written for you to paint on never has any.)", Min = 0, Max = 3)]
-	public static float Blood = 1f;
-}
-
-/// <summary>
-/// The numbers the face factory works from (<see cref="FaceTuning"/>'s, or fixed ones in the tests). <paramref name="Neutral"/> makes every face the same
-/// colour, with no blood and no expression tints: only the head's position and angle differ (used for the sheet the player paints on).
+/// The numbers the face factory works from. <paramref name="Neutral"/> makes every face the same
+/// colour, with no blood and no expression tints: only the head's position and angle differ (the tests use it; it is how a sheet to paint on was once made).
 /// </summary>
 internal readonly record struct FaceSettings(float CropLeft, float CropTop, float CropWidth, float CropHeight, float Damage, float Brightness, float Blood = 1f, bool Neutral = false)
 {
 	public static FaceSettings Default => new(0f, 0f, 1f, 1f, 1f, 1f, 1f);
-
-	public static FaceSettings FromTuning() =>
-		new(FaceTuning.CropLeft, FaceTuning.CropTop, FaceTuning.CropWidth, FaceTuning.CropHeight, FaceTuning.Damage, FaceTuning.Brightness, FaceTuning.Blood);
 }
 
 /// <summary>The size of one picture in the game data and where its corner sits (read from the original face, so a replacement fits exactly).</summary>
