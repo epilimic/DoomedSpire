@@ -271,7 +271,8 @@ internal sealed class DoomView
 		{
 			ModLog.Fail("game", $"starting {label}", e);
 			Shutdown();
-			var problem = $"Could not start {label}.\n{e.GetType().Name}: {ModLog.Clean(e.Message)}";
+			// a game the player saved that the engine cannot run (Heretic, Hexen, ...) is simply not supported; the log has the details (ModLog.Fail above)
+			var problem = wad != null ? "Sorry, this WAD is not supported." : $"Could not start {label}.\n{e.GetType().Name}: {ModLog.Clean(e.Message)}";
 			if (saved.Count > 0)
 			{
 				ShowPicker(saved, problem);
