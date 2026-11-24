@@ -171,8 +171,8 @@ namespace ManagedDoomTest
                     Assert.AreEqual("Picked up a Blue Cho Melody Card.", DoomInfo.Strings.GOTBLUECARD.ToString());
                     Assert.AreEqual("Picked up a Yellow Ki Melody Card.", DoomInfo.Strings.GOTYELWCARD.ToString());
                     Assert.AreEqual("Picked up a Red Wah Melody Card.", DoomInfo.Strings.GOTREDCARD.ToString());
-                    Assert.AreEqual("You need a Blue Cho Melody Card to open", DoomInfo.Strings.PD_BLUEK.ToString());
-                    Assert.AreEqual("You need a Red Wah Melody Card to use", DoomInfo.Strings.PD_REDO.ToString());
+                    Assert.AreEqual("You need a Blue Cho Melody Card to open this", DoomInfo.Strings.PD_BLUEK.ToString());
+                    Assert.AreEqual("You need a Red Wah Melody Card to use this", DoomInfo.Strings.PD_REDO.ToString());
                     Assert.AreEqual(skull, DoomInfo.Strings.GOTBLUESKUL.ToString(), "the skull keys keep their words");
                     // every message fits on the 320 pixel wide screen (the game does not wrap them, it cuts them off)
                     var font = new ManagedDoom.Video.DrawScreen(wad, 320, 200);
