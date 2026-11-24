@@ -156,8 +156,12 @@ internal static class PlayerFace
 					allWritten = false;
 					continue;
 				}
-				var faces = FaceFactory.Build(picture, spec, palette, SettingsFor(character, settings));
+				var characterSettings = SettingsFor(character, settings);
+				var faces = FaceFactory.Build(picture, spec, palette, characterSettings);
 				WriteSheet(FaceFactory.Sheet(faces, palette, 1, transparentBackground: true, labels: true), SheetPath(character));
+				// to find out why a face comes out wrong: the picture it was made from, and how it was cropped
+				WriteSheet(picture, Path.Combine(folder, character.Id.Entry.ToLowerInvariant() + "-portrait.png"));
+				ModLog.Info("face", character.Id.Entry + ": " + FaceFactory.CropReport(picture, spec(FaceFactory.ReferenceFace), characterSettings));
 			}
 			catch (Exception e)
 			{

@@ -516,6 +516,19 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
+        public void TheCropReportSaysWhatTheFaceCutsOff()
+        {
+            using (var wad = new Wad(WadPath.Doom1Shareware))
+            {
+                var p = Patch.FromWad(wad, FaceFactory.ReferenceFace);
+                var report = FaceFactory.CropReport(Ellipse(200, 120, 200, 100), new PatchSpec(p.Width, p.Height, p.LeftOffset, p.TopOffset), FaceSettings.Default);
+                Assert.IsTrue(report.Contains("portrait 200x120"), report);
+                Assert.IsTrue(report.Contains("x 0..199"), report);
+                Assert.IsFalse(report.Contains("0 at the sides"), "a wide head has drawn pixels outside the face's window: " + report);
+            }
+        }
+
+        [TestMethod]
         public void AFaceSheetReadsBackIntoTheSameFacesAtAnyWholeNumberScale()
         {
             var (faces, palette, spec, wad) = Setup(FaceSettings.Default);

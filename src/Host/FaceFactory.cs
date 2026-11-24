@@ -64,7 +64,7 @@ internal static class FaceFactory
 	}
 
 	/// <summary>The lump whose size and corner define the "canonical" face: the normal straight-ahead look at full health.</summary>
-	private const string ReferenceFace = "STFST00";
+	public const string ReferenceFace = "STFST00";
 
 	/// <summary>
 	/// Builds all the face lumps: palette-matched, encoded as DOOM patches, ready for <see cref="PwadWriter"/>.
@@ -264,6 +264,36 @@ internal static class FaceFactory
 		}
 		head = (left, top, right, bottom);
 		return drawn > 0 && outside * 100 > drawn;
+	}
+
+	/// <summary>
+	/// One line saying how a portrait is cropped to the face: its size, the box round what is drawn in it, the part of it the face shows, how much of what is drawn lies
+	/// outside that part, and whether <see cref="FaceSettings.FitWideHead"/> would fit the head in. For finding out why a face comes out cut.
+	/// </summary>
+	public static string CropReport(Rgba source, PatchSpec reference, FaceSettings settings)
+	{
+		var scale = Math.Max(reference.Width / (double)source.Width, reference.Height / (double)source.Height);
+		var windowW = reference.Width / scale;
+		var windowH = reference.Height / scale;
+		var x0 = (source.Width - windowW) / 2;
+		var y0 = (source.Height - windowH) / 2;
+		int left = source.Width, right = -1, top = source.Height, bottom = -1, drawn = 0, outsideSides = 0, outsideTopBottom = 0;
+		for (var y = 0; y < source.Height; y++)
+		{
+			for (var x = 0; x < source.Width; x++)
+			{
+				if (source.Data[4 * (y * source.Width + x) + 3] < 128)
+				{
+					continue;
+				}
+				drawn++;
+				left = Math.Min(left, x); right = Math.Max(right, x); top = Math.Min(top, y); bottom = Math.Max(bottom, y);
+				if (x + 1 <= x0 || x >= x0 + windowW) { outsideSides++; }
+				if (y + 1 <= y0 || y >= y0 + windowH) { outsideTopBottom++; }
+			}
+		}
+		return $"portrait {source.Width}x{source.Height}, drawn pixels {drawn} in x {left}..{right} y {top}..{bottom}; the face shows x {x0:0.#}..{x0 + windowW:0.#} y {y0:0.#}..{y0 + windowH:0.#}; " +
+			$"outside the face: {outsideSides} at the sides, {outsideTopBottom} above or below; fit wide head: {settings.FitWideHead}";
 	}
 
 	// ---------------------------------------------------------------- one face
