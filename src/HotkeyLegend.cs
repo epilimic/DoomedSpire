@@ -15,7 +15,7 @@ internal static class HotkeyLegend
 	/// <summary>The keys, as the mod binds them (the engine's defaults, Config.cs, with the backtick key as the toggle). The toggle key is shown as ~, which people know better.</summary>
 	private static readonly (string Key, string Action)[] Rows =
 	{
-		("~", "Toggle Map"),
+		("~", "Toggle Spire"),
 		("Esc", "DOOM Menu"),
 		("WASD", "Move"),
 		("Mouse", "Turn"),
