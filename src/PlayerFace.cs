@@ -19,6 +19,12 @@ internal static class PlayerFace
 	/// <summary>How many pixels to the right of where the sheets put them the faces are drawn (the faces looked slightly left of centre in the face panel).</summary>
 	private const int FaceShift = 1;
 
+	/// <summary>
+	/// Whether the sheets to paint on are written into the data folder (<see cref="WriteSheetsToPaint"/>). Only the owner has any use for them, so this is off in a release;
+	/// set it to true to get them back. Not a const, so the code stays compiled and checked.
+	/// </summary>
+	private static readonly bool WriteSheetsToPaintFiles = false;
+
 	/// <summary>Builds the add-on WAD for the current character into <paramref name="folder"/> and returns its path, or null (log says why) to keep Doomguy.</summary>
 	public static string? TryBuild(string iwadPath, string folder)
 	{
@@ -55,9 +61,11 @@ internal static class PlayerFace
 			Directory.CreateDirectory(folder);
 			var id = character.Id.Entry.ToLowerInvariant();
 
-			// A sheet to paint on for every playable character (so all of them can be painted without playing each). See WriteSheetsToPaint.
-			var toPaint = Path.Combine(folder, id + "-faces-to-paint.png");
-			WriteSheetsToPaint(folder, spec, palette);
+			// A sheet to paint on for every playable character (so all of them can be painted without playing each). A tool for the owner: off in a release. See WriteSheetsToPaint.
+			if (WriteSheetsToPaintFiles)
+			{
+				WriteSheetsToPaint(folder, spec, palette);
+			}
 
 			// The faces painted for this character, if there are any, are used instead of the generated ones: first the player's own file in the data folder (to try
 			// out a sheet before it is built in), then the one built into the mod (assets/<character>-faces.png).
@@ -97,7 +105,7 @@ internal static class PlayerFace
 			var path = Path.Combine(folder, "face.wad");
 			File.WriteAllBytes(path, PwadWriter.Build(lumps));
 
-			ModLog.Info("face", $"{how ?? "made the faces of"} {character.Id.Entry} ({lumps.Count} faces, from a {picture.Width}x{picture.Height} picture); sheets to paint on are in {folder}, for example {toPaint}");
+			ModLog.Info("face", $"{how ?? "made the faces of"} {character.Id.Entry} ({lumps.Count} faces, from a {picture.Width}x{picture.Height} picture)");
 			return path;
 		}
 		catch (Exception e)
