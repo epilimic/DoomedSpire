@@ -52,6 +52,10 @@ internal sealed class DoomView
 	private readonly Label pickerTitle;
 	private readonly VBoxContainer choiceList;
 	private readonly Label pickerFooter;
+	private readonly VBoxContainer titleList;
+	private readonly VBoxContainer footerList;
+	private readonly List<TextureRect> skullRects = new();
+	private int skullFrame;
 
 	private DoomSession? session;
 	private byte[]? rgba;
@@ -126,9 +130,13 @@ internal sealed class DoomView
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};
 		pickerBox.AddChild(pickerTitle);
+		titleList = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+		pickerBox.AddChild(titleList);
 		choiceList = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
 		choiceList.AddThemeConstantOverride("separation", 8);
 		pickerBox.AddChild(choiceList);
+		footerList = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+		pickerBox.AddChild(footerList);
 		pickerFooter = new Label
 		{
 			HorizontalAlignment = HorizontalAlignment.Center,
@@ -137,6 +145,11 @@ internal sealed class DoomView
 			MouseFilter = Control.MouseFilterEnum.Ignore,
 		};
 		pickerBox.AddChild(pickerFooter);
+
+		// The skull cursor of DOOM's menus flips between its two pictures about four times a second (the engine's 8 tics at 35 a second).
+		var skullTimer = new Godot.Timer { WaitTime = 8.0 / 35.0, OneShot = false, Autostart = true };
+		skullTimer.Timeout += FlipSkulls;
+		pickerRoot.AddChild(skullTimer);
 
 		// The picture area holds keyboard focus while the game runs, and receives the keys. The mouse clicks arrive at the full-screen mouse area.
 		screen.FocusMode = Control.FocusModeEnum.All;
@@ -288,21 +301,123 @@ internal sealed class DoomView
 
 	private void ShowPicker(IReadOnlyList<WadFile> saved, string? problem)
 	{
-		foreach (var child in choiceList.GetChildren())
+		foreach (var list in new[] { choiceList, titleList, footerList })
 		{
-			child.QueueFree();
+			foreach (var child in list.GetChildren())
+			{
+				child.QueueFree();
+			}
 		}
-		AddChoice(BuiltInWad.Label, null, saved);
+		skullRects.Clear();
+
+		var font = DoomText.Font;
+		var choices = new List<(string Text, WadFile? Wad)> { (BuiltInWad.Label, null) };
 		foreach (var wad in saved)
 		{
-			AddChoice($"{wad.Name}   ({wad.Size / 1048576.0:0.0} MB)", wad, saved);
+			choices.Add(($"{wad.Name}   ({wad.Size / 1048576.0:0.0} MB)", wad));
 		}
 
-		pickerTitle.Text = problem == null ? "Choose a game" : problem + "\n\nChoose a game";
-		pickerFooter.Text = "Save more DOOM games (.wad files) in:\n" + SavedGamesFolder;
+		if (font != null && ModLog.Try("game", "making the game picker in DOOM's font", () => BuildDoomPicker(font, choices, saved, problem)))
+		{
+			pickerTitle.Visible = false;
+			pickerFooter.Text = SavedGamesFolder; // a path keeps its capitals and small letters, which DOOM's font cannot show
+			pickerFooter.Visible = true;
+		}
+		else
+		{
+			// the plain game text: DOOM's font could not be made
+			skullRects.Clear();
+			foreach (var list in new[] { choiceList, titleList, footerList })
+			{
+				foreach (var child in list.GetChildren())
+				{
+					list.RemoveChild(child);
+					child.QueueFree();
+				}
+			}
+			foreach (var (text, wad) in choices)
+			{
+				AddChoice(text, wad, saved);
+			}
+			pickerTitle.Text = problem == null ? "Choose a game" : problem + "\n\nChoose a game";
+			pickerTitle.Visible = true;
+			pickerFooter.Text = "Save more DOOM games (.wad files) in:\n" + SavedGamesFolder;
+			pickerFooter.Visible = true;
+		}
 		message.Visible = false;
 		picture.Texture = null;
 		pickerRoot.Visible = true;
+	}
+
+	/// <summary>
+	/// The picker the way DOOM draws its own menus: the title in DOOM's font twice as big, each game a line of its font with the skull cursor coming up beside the
+	/// one the mouse is over. Throws if anything fails, so ShowPicker falls back to the plain controls.
+	/// </summary>
+	private void BuildDoomPicker(DoomFont font, IReadOnlyList<(string Text, WadFile? Wad)> choices, IReadOnlyList<WadFile> saved, string? problem)
+	{
+		if (problem != null)
+		{
+			titleList.AddChild(DoomText.Make(font, problem, PickerWidth, centred: true));
+			titleList.AddChild(new Control { CustomMinimumSize = new Vector2(0, 20), MouseFilter = Control.MouseFilterEnum.Ignore });
+		}
+		titleList.AddChild(DoomText.Make(font, "Choose a game", PickerWidth, centred: true, zoom: 2));
+		titleList.AddChild(new Control { CustomMinimumSize = new Vector2(0, 24), MouseFilter = Control.MouseFilterEnum.Ignore });
+
+		const float SkullSlot = 84f; // the cursor's width and a gap, before the text
+		foreach (var (text, wad) in choices)
+		{
+			var label = DoomText.Make(font, text, PickerWidth - SkullSlot);
+			var height = Math.Max(68f, label.CustomMinimumSize.Y + 24f);
+			label.Position = new Vector2(SkullSlot, (height - label.CustomMinimumSize.Y) / 2);
+
+			var button = new Godot.Button { CustomMinimumSize = new Vector2(PickerWidth, height), FocusMode = Control.FocusModeEnum.None };
+			foreach (var state in new[] { "normal", "hover", "pressed", "hover_pressed", "focus", "disabled" })
+			{
+				button.AddThemeStyleboxOverride(state, new StyleBoxEmpty());
+			}
+			button.AddChild(label);
+			var skull = DoomText.MakeSkull(font);
+			if (skull != null)
+			{
+				skull.Position = new Vector2(0, (height - skull.Size.Y) / 2);
+				skull.Visible = false;
+				button.AddChild(skull);
+				skullRects.Add(skull);
+				button.MouseEntered += () => { if (GodotObject.IsInstanceValid(skull)) skull.Visible = true; };
+				button.MouseExited += () => { if (GodotObject.IsInstanceValid(skull)) skull.Visible = false; };
+			}
+			button.Pressed += () => ModLog.Try("game", "starting the chosen game", () => BeginGame(wad, saved));
+			choiceList.AddChild(button);
+		}
+
+		footerList.AddChild(new Control { CustomMinimumSize = new Vector2(0, 16), MouseFilter = Control.MouseFilterEnum.Ignore });
+		footerList.AddChild(DoomText.Make(font, "Save more DOOM games (.wad files) in:", 960f, centred: true));
+	}
+
+	/// <summary>Timer: the skull cursors take their other picture.</summary>
+	private void FlipSkulls()
+	{
+		try
+		{
+			skullFrame ^= 1;
+			var font = DoomText.Font;
+			if (font == null || font.SkullCount == 0)
+			{
+				return;
+			}
+			var texture = DoomText.SkullTexture(font, skullFrame);
+			foreach (var skull in skullRects)
+			{
+				if (GodotObject.IsInstanceValid(skull) && skull.Visible)
+				{
+					skull.Texture = texture;
+				}
+			}
+		}
+		catch (Exception e)
+		{
+			ModLog.Fail("game", "flipping the skull cursor", e);
+		}
 	}
 
 	private void AddChoice(string text, WadFile? wad, IReadOnlyList<WadFile> saved)
