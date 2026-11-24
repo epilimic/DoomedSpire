@@ -8,8 +8,8 @@ using ManagedDoom;
 namespace DoomedSpire;
 
 /// <summary>
-/// Gives the original DOOM 1 games the Fool's melodies for their keycards (see KeycardTheme): builds the small add-on WAD with the recoloured cards, the status bar
-/// icons, the door strips and the marker that changes the pickup messages. The only art that comes from the mod is the three 7 x 5 status bar icons the owner
+/// Gives the original DOOM 1 games the Fool's melodies for their keycards (see KeycardTheme): builds the small add-on WAD with the melody symbols that replace the cards, the status bar
+/// icons and the marker that changes the pickup messages. The only art that comes from the mod is the three 7 x 5 status bar icons the owner
 /// paints (assets/small_cho.png, small_ki.png and small_wah.png); until they exist the game's own icons stay. No game picture is stored: the rest is made
 /// from the loaded game. Quick (a few small pictures), so it is made at every start. If anything goes wrong the game starts with its own keycards.
 /// </summary>
@@ -45,7 +45,7 @@ internal static class KeyTheme
 			Directory.CreateDirectory(folder);
 			var path = Path.Combine(folder, "keys.wad");
 			File.WriteAllBytes(path, PwadWriter.Build(lumps));
-			ModLog.OnceInfo("keys", "built", $"the keycards are the melody cards (status bar icons: {art.Count} of {KeycardTheme.HudFiles.Count} painted, the rest the game's own recoloured)");
+			ModLog.OnceInfo("keys", "built", $"the keycards are the melody cards (status bar icons: {art.Count} of {KeycardTheme.HudFiles.Count} painted, the rest the game's own)");
 			return path;
 		}
 		catch (Exception e)

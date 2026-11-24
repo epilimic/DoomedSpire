@@ -36,34 +36,36 @@ namespace ManagedDoomTest
         }
 
         [TestMethod]
-        public void TheThreeCardsKeepTheirShapeSizeAndLightsAndGetASymbolOnTheirFace()
+        public void TheThreeCardsAreReplacedByTheirSymbolsAloneWithADarkEdge()
         {
             using (var wad = new Wad(WadPath.Doom1Shareware))
             {
                 var palette = new DoomPalette(wad.ReadLump("PLAYPAL"));
                 var lumps = Theme(wad).ToDictionary(l => l.Name, l => l.Data);
-                var symbolPixels = new Dictionary<char, int> { ['B'] = 15, ['Y'] = 14, ['R'] = 14 }; // the pixels in the symbols of Cho (rings), Ki (cross) and Wah (zigzag)
+                var symbolPixels = new Dictionary<char, int> { ['B'] = 15, ['Y'] = 14, ['R'] = 14 }; // at least the pixels of the symbols of Cho (rings), Ki (cross) and Wah (zigzag)
                 foreach (var letter in "BYR")
                 {
-                    var a = DoomPatch.Decode(wad.ReadLump(letter + "KEYA0"));
-                    var b = DoomPatch.Decode(wad.ReadLump(letter + "KEYB0"));
-                    var lights = Enumerable.Range(0, a.Pixels.Length).Where(i => a.Pixels[i] != b.Pixels[i]).ToList();
-                    Assert.IsTrue(lights.Count >= 3, "the lights on the card's edge are found");
-                    foreach (var (frame, original) in new[] { ("A", a), ("B", b) })
+                    var original = DoomPatch.Decode(wad.ReadLump(letter + "KEYA0"));
+                    var frames = new[] { "A", "B" }.Select(f => DoomPatch.Decode(lumps[letter + "KEY" + f + "0"])).ToArray();
+                    foreach (var themed in frames)
                     {
-                        var name = letter + "KEY" + frame + "0";
-                        var themed = DoomPatch.Decode(lumps[name]);
-                        Assert.AreEqual((original.Width, original.Height, original.Left, original.Top), (themed.Width, themed.Height, themed.Left, themed.Top), name + " keeps its size and place");
-                        Assert.IsTrue(original.Pixels.Select(p => p >= 0).SequenceEqual(themed.Pixels.Select(p => p >= 0)), name + " keeps its outline");
-                        foreach (var i in lights) Assert.AreEqual(original.Pixels[i], themed.Pixels[i], name + ": the lights are not touched");
-                        var changed = Enumerable.Range(0, original.Pixels.Length).Count(i => original.Pixels[i] != themed.Pixels[i]);
-                        Assert.IsTrue(changed >= symbolPixels[letter], $"{name}: the symbol (and its edge) is drawn on the face ({changed} pixels changed)");
-                        // the symbol's own pixels are all one light colour
-                        var ink = themed.Pixels.Where((p, i) => original.Pixels[i] != p).GroupBy(p => p).OrderByDescending(g => g.Count()).First();
-                        Assert.IsTrue(ink.Count() >= symbolPixels[letter] - 2, $"{name}: the symbol is in one colour ({ink.Count()} pixels)");
+                        Assert.IsFalse((original.Width, original.Height) == (themed.Width, themed.Height), "the card's body is gone, the picture is the symbol's own size");
+                        Assert.AreEqual(themed.Height + 3, themed.Top, "hung 3 pixels above the floor like the card was");
+                        Assert.AreEqual(themed.Width / 2, themed.Left, "centred");
+                        var drawn = themed.Pixels.Where(p => p >= 0).ToList();
+                        Assert.IsTrue(drawn.Count >= symbolPixels[letter] * 2, $"{letter}: the symbol and its edge are drawn ({drawn.Count} pixels)");
+                        var inkColour = drawn.Select(p => palette.Colour(p)).OrderByDescending(c => c.R + c.G + c.B).First();
+                        var ink = drawn.Count(p => palette.Colour(p) == inkColour);
+                        Assert.IsTrue(ink >= symbolPixels[letter], $"{letter}: the symbol is in one light colour ({ink} pixels)");
+                        var edge = drawn.Where(p => palette.Colour(p) != inkColour).ToList();
+                        Assert.IsTrue(edge.Count > 0 && edge.All(p => { var c = palette.Colour(p); return c.R < 60 && c.G < 60 && c.B < 60; }), $"{letter}: the rest is a dark edge");
+                        Assert.AreEqual(-1, themed.Pixels[0], "the corners are clear");
                     }
+                    Assert.IsFalse(frames[0].Pixels.SequenceEqual(frames[1].Pixels), $"{letter}: the second frame is a different, lighter colour so it flashes");
+                    int Brightest(int[] px) => px.Where(p => p >= 0).Select(p => palette.Colour(p)).Max(c => c.R + c.G + c.B);
+                    Assert.IsTrue(Brightest(frames[1].Pixels) > Brightest(frames[0].Pixels), $"{letter}: frame B is lighter");
                 }
-                Assert.IsFalse(lumps["BKEYA0"].SequenceEqual(lumps["RKEYA0"]) || lumps["BKEYA0"].SequenceEqual(lumps["YKEYA0"]), "the three cards are different");
+                Assert.IsFalse(lumps["BKEYA0"].SequenceEqual(lumps["RKEYA0"]) || lumps["BKEYA0"].SequenceEqual(lumps["YKEYA0"]), "the three symbols are different");
                 // the status bar keeps the game's own icons until the owner paints them
                 Assert.IsFalse(lumps.ContainsKey("STKEYS0") || lumps.ContainsKey("STKEYS1") || lumps.ContainsKey("STKEYS2"));
                 Assert.IsTrue(lumps.ContainsKey(KeycardTheme.Marker));
