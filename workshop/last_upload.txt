@@ -1,0 +1,3 @@
+version=v1.0.0
+dll=d04abb815203
+date=2026-11-24
